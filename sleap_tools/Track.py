@@ -10,6 +10,11 @@ from scipy import signal
 from scipy import ndimage
 from scipy.optimize import linear_sum_assignment
 
+import sys
+if not sys.warnoptions:
+    import warnings
+    warnings.simplefilter("ignore")
+
 import numpy as np
 import os
 import cv2
@@ -21,6 +26,7 @@ import sleap
 import h5py
 
 #
+names= ['female','male','pup1','pup2']
 
 class Track():
 
@@ -44,9 +50,10 @@ class Track():
 
         fname_h5 = self.fname_slp[:-4] + ".h5"
         if self.slp is None:
-            print("... slp file not loaded, loading now...")
+            #print("... slp file not loaded, loading now...")
             self.load_slp()
-            print("... done loading slp")
+            if self.verbose:
+                print("... done loading slp")
 
         self.slp.export(fname_h5)
 
@@ -54,15 +61,18 @@ class Track():
 
         fname_h5 = self.fname_slp[:-4] + ".h5"
         if os.path.exists(fname_h5) == False:
-            print("... h5 file missing, converting now...")
+            if self.verbose:
+                print("... h5 file missing, converting now...")
             self.slp_to_h5()
-            print("... done loading h5")
+            if self.verbose:
+                print("... done loading h5")
 
         #
         hf = h5py.File(fname_h5, 'r')
 
         keys = hf.keys()
         group2 = hf.get('tracks')
+        print ("group2: ", group2)
         tracks = []
         for k in range(len(group2)):
             tracks.append(group2[k])
@@ -78,12 +88,17 @@ class Track():
         #
         fname_npy = self.fname_slp[:-4] + '.npy'
         if os.path.exists(fname_npy) == False:
-            print("... npy missing, converting...")
+            if self.verbose:
+                print("... npy missing, converting...")
             self.slp_to_npy()
-            print("... done loading npy")
+            if self.verbose:
+                print("... done loading npy")
 
-        #
+        # full feature tracks
         self.tracks = np.load(fname_npy)
+
+        # copy of full feature tracks to be corrected
+        self.tracks_fixed = self.tracks.copy()
 
         #
         self.tracks_centers = np.nanmean(
@@ -106,7 +121,7 @@ class Track():
             #         0       1        2        3         4      5        6        7      8
 
             #
-            for n in trange(self.tracks.shape[0]):
+            for n in range(self.tracks.shape[0]):
                 for a in range(self.tracks.shape[1]):
                     for id_ in ids:
                         if np.isnan(self.tracks[n,a,id_,0])==False:
@@ -128,40 +143,47 @@ class Track():
         # break distances that are very large over single jumps
         # join by time
         self.time_cont_tracks = []
+        # loop over animals
         for a in range(self.tracks_spine.shape[1]):
             track = self.tracks_spine[:,a]
+
+            # check temporal distance
             idx = np.where(np.isnan(track)==False)[0]
             diff = idx[1:]-idx[:-1]
             idx2 = np.where(diff>1)[0]
+
 
             # make track list
             self.time_cont_tracks.append([])
 
             # append first track
-            self.time_cont_tracks[a].append([0,idx[idx2[0]]])
+            if idx2.shape[0]>0:
+                self.time_cont_tracks[a].append([0,idx[idx2[0]]])
+            else:
+                # only a single track found throughout the entire dataset;
+                #print ("Single track animal: ", a, "idx: ", idx.shape, "  idx2: ", idx2.shape)
+                self.time_cont_tracks[a].append([0,idx[-1]])
 
             # append all other tracks
             for i in range(1,idx2.shape[0],1):
-                #if (idx[idx2[i]] - idx[idx2[i-1]+1])>0:
                 self.time_cont_tracks[a].append([idx[idx2[i-1]+1],
                                 idx[idx2[i]]])
-                #else:
-                #    print ("short: ", idx[idx2[i]] - idx[idx2[i-1]+1])
 
         # break by space
-        #self.max_jump_single_frame = 100
         self.tracks_chunks = []
         for a in range(len(self.time_cont_tracks)):
             self.tracks_chunks.append([])
             while len(self.time_cont_tracks[a])>0:  #for k in range(len(self.tcrs[a])):
                 times = self.time_cont_tracks[a][0]
                 locs = self.tracks_spine[times[0]:times[1]+1, a]  # be careful to add +1
+
                 dists = np.sqrt((locs[1:,0]-locs[:-1,0])**2+
                                 (locs[1:,1]-locs[:-1,1])**2)
                 idx = np.where(dists>=self.max_jump_single_frame)[0]
                 t = np.arange(times[0],times[1],1)
+
+                #
                 if idx.shape[0]>0:
-                    #if t[idx[0]]- t[0]>1:
                     self.tracks_chunks[a].append([t[0],t[idx[0]]])
                     for i in range(1,idx.shape[0],1):
                         #if (t[idx[i]]-t[idx[i-1]+1])>1:
@@ -191,13 +213,13 @@ class Track():
                 self.tracks_scores_mean[chunk[0]:chunk[1]+1,animal_id]= mean
 
 
-    def del_single_chunks(self, min_chunk_len=2):
+    def del_short_chunks(self, min_chunk_len=2):
 
         for a in range(len(self.tracks_chunks)):
             chunks = np.array(self.tracks_chunks[a])
 
             #
-            print (chunks.shape)
+            #print (chunks.shape)
             lens = chunks[:,1]-chunks[:,0]
 
             #
@@ -211,7 +233,7 @@ class Track():
             idx = np.where(lens>=min_chunk_len)[0]
             chunks = chunks[idx]
             self.tracks_chunks[a] = chunks
-            print (len(self.tracks_chunks[a]))
+            #print (len(self.tracks_chunks[a]))
 
     def merge_single_jumps(self):
 
@@ -253,12 +275,13 @@ class Track():
         fname_scores = self.fname_slp[:-4] + "_scores.npy"
 
         if os.path.exists(fname_scores) == False:
-            print("... slp file loading...")
+            if self.verbose:
+                print("... slp file loading...")
             self.load_slp()
 
             tracks = ['female', 'male', 'pup shaved', 'pup unshaved']
             self.scores = np.zeros((len(self.slp), 4), 'float32') + np.nan
-            for n in trange(len(self.slp)):
+            for n in range(len(self.slp)):
                 for a in range(len(self.slp[n])):
                     name = self.slp[n][a].track.name
                     idx = tracks.index(name)
@@ -313,7 +336,14 @@ class Track():
         ################### CURRENT ######################
         #track_local = np.array(self.tracks_chunks[animal_id1])
         track_local = np.array(self.tracks_chunks_fixed[animal_id1])
-        chunk_current = np.where(np.logical_and(t>=track_local[:,0], t<=track_local[:,1]))[0]
+        chunk_current = []
+        while len(chunk_current)==0:
+            chunk_current = np.where(np.logical_and(t>=track_local[:,0], t<=track_local[:,1]))[0]
+
+            # advance time until get to the first segment for this animal
+            if len(chunk_current)==0:
+                t+=1
+
         times_current = track_local[chunk_current][0]
         locs_current = self.tracks_spine_fixed[times_current, animal_id1]
 
@@ -322,7 +352,7 @@ class Track():
             print ("locs active; ", locs_current)
             print ("times active animal: ", times_current)
 
-        return times_current, locs_current, chunk_current
+        return times_current, locs_current, chunk_current, t
 
 
     def check_chunk_overlap(self,
@@ -530,7 +560,7 @@ class Track():
         if self.verbose:
             print ("swapping: ", correct_id, " with ", self.animal_current)
         ##########################################
-        ##########################################
+        ###### SWAP SPINES (SINGLE FEATURES) #####
         ##########################################
         # hold memory
         temp_track = self.tracks_spine_fixed[times_current[0]:times_current[1]+1,
@@ -547,9 +577,26 @@ class Track():
         self.tracks_spine_fixed[times_current[0]:times_current[1]+1,
                            correct_id]= temp_track
 
+        ##########################################
+        ############ SWAP FULL FEATURES ##########
+        ##########################################
+        # hold memory
+        temp_track = self.tracks_fixed[times_current[0]:times_current[1]+1,
+                                        self.animal_current].copy()
+        #
+        temp2_track = self.tracks_fixed[times_current[0]:times_current[1]+1,
+                                         correct_id].copy()
+
+        #
+        self.tracks_fixed[times_current[0]:times_current[1]+1,
+                           self.animal_current]= temp2_track
+
+        # replace correct id with temp
+        self.tracks_fixed[times_current[0]:times_current[1]+1,
+                           correct_id]= temp_track
 
         ##########################################
-        ##########################################
+        ############# SWAP CHUNKS ################
         ##########################################
         #
         temp_chunk = times_current #self.tracks_chunks_fixed[animal_current][chunk_current].copy()
@@ -606,7 +653,7 @@ class Track():
                    t_end):
 
         #
-        pbar = tqdm(total=(t_end-t))
+        #pbar = tqdm(total=(t_end-t))
 
         #
         self.animal_current = 0
@@ -619,12 +666,12 @@ class Track():
         #
         self.tracks_spine_fixed = self.tracks_spine.copy()
 
-        #
+        # loop while some chunks remain
         while True:  # <-------- need to advance in time slowly by indexing through each animal chunk
-            pbar.update(t)
+            #pbar.update(t)
 
             # grab location for current chunk and animal being aanlyzed:
-            times_current, locs_current, chunk_current = self.get_chunk_info(
+            times_current, locs_current, chunk_current, t = self.get_chunk_info(
                                                                         self.animal_current,
                                                                         t)
             if self.verbose:
@@ -673,10 +720,8 @@ class Track():
 
                 # append all track starts that occur after current time;
                 # TODO: this may skip tracks that start at the same time...
-                next_chunk_time = np.where(temp2[:,0]>t)[0]
-
-                #
                 try:
+                    next_chunk_time = np.where(temp2[:,0]>t)[0]
                     temp.append(temp2[next_chunk_time,0][0])
                 except:
 

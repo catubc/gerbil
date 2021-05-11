@@ -131,7 +131,8 @@ class Visualize():
                             fname_video_out,
                             start,
                             end,
-                            fps):
+                            fps,
+                            shrink):
 
         colors = [
             (0, 0, 255),
@@ -156,10 +157,14 @@ class Visualize():
             print("fname: exists", fname_out)
             return
 
+        # rescale tracks
+        tracks= tracks/shrink
+
         # video settings
-        size_vid = np.array([1280, 1024])
-        dot_size = 12
+        size_vid = np.int32(np.array([1280, 1024])/shrink)
+        dot_size = int(12/shrink)
         thickness = -1
+        #print ("size vid: ", size_vid)
 
         # load original vid
         original_vid = cv2.VideoCapture(video_name)
@@ -174,14 +179,39 @@ class Visualize():
         histories = np.zeros((tracks.shape[1],
                               5, 2), 'float32') + np.nan
         print("Histories: ", histories.shape)
+
+        #
         for n in trange(start, end, 1):
 
             # for n in trange(start, 100, 1):
             ret, frame = original_vid.read()
 
+            # scale frame
+            #print ("Frame: ", frame.shape, type(frame[0][0][0]))
+            #frame = frame[::shrink, ::shrink]
+            #print ("Frame: ", frame.shape, type(frame[0][0][0]))
+            shrink_ratio = 1/shrink
+            frame = cv2.resize(frame, # original image
+                       (0,0), # set fx and fy, not the final size
+                       fx=shrink_ratio,
+                       fy=shrink_ratio,
+                       interpolation=cv2.INTER_NEAREST)
+
+            # print frame #
+            cv2.putText(frame,
+                        str(n),
+                        (int(50/shrink), int(150/shrink)),
+                        font,
+                        int(10/shrink),
+                        (255, 255, 0),
+                        5)
             #
-            cv2.putText(frame, str(n), (50, 50), font, 5, (255, 255, 0), 5)
-            cv2.putText(frame, fname_video_out, (500, 50), font, 5, (255, 255, 0), 5)
+            # cv2.putText(frame, fname_video_out,
+            #             (int(500/shrink), int(50/shrink)),
+            #             font,
+            #             int(5/shrink),
+            #             (255, 255, 0),
+            #             5)
 
             #
             for i in range(tracks.shape[1]):
@@ -213,7 +243,7 @@ class Visualize():
                                            center_coordinates,
                                            radius,
                                            color,
-                                           -1)
+                                           thickness)
                     else:
                         continue
 
