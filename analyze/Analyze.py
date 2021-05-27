@@ -14,89 +14,253 @@ clrs = ['red','blue','cyan','green']
 
 #############################
 
+def plot_pairwise_interactions2(locs_multi_hour):
 
-def plot_multi_interactions(locs):
 
-    # PLOT MULTI ANIMAL DURATIONS
-    fig=plt.figure()
-    ax3=plt.subplot(1,1,1)
-    handles, labels = ax3.get_legend_handles_labels()
-
-    import matplotlib.patches as mpatches
-
-    for k in range(len(names)):
-        plt.bar(k, multi_animal_durations[k], 0.9, color=clrs[k])
-
-        patch = mpatches.Patch(color=clrs[k], label=names_multi_animal[k])
-
-        # handles is a list, so append manual patch
-        handles.append(patch)
-
-    # plot the legend
-    plt.legend(handles=handles,fontsize=20)
-    plt.xticks([])
-    plt.tick_params(labelsize=20)
-    plt.xlim(-0.5,4.5)
-    plt.ylabel("time together (sec)",fontsize=20)
-
-    #ax3.set_title("Duration Multi-animal interactions",fontsize=15)
-    #################################################
-    ######### PLOT INTERACTIONS PAIRWISE ############
-    #################################################
-    fig=plt.figure()
-    ax1=plt.subplot(1,2,1)
-
-    im = plt.imshow(interactions, cmap='viridis')
-    #print(locs.shape[0], x_ticks)
-    plt.xticks(np.arange(locs.shape[0]), x_ticks,rotation=15)
-    plt.yticks(np.arange(locs.shape[0]), x_ticks,rotation=75)
-    plt.tick_params(labelsize=20)
-    ax1.set_title("# of interactions",fontsize=20)
-    plt.tick_params(labelsize=20)
-
-    cbar = plt.colorbar()
-    cbar.set_label("# interactions", fontsize=20)
-
-    # Loop over data dimensions and create text annotations.
-    if False:
-        for i in range(interactions.shape[0]):
-            for j in range(interactions.shape[1]):
-                if np.isnan(durations_matrix[i, j])==True:
-                    continue
-                text = ax1.text(j, i, interactions[i, j],
-                               ha="center", va="center", color=text_clr,
-                               fontsize=13)
-
-    ##############################################
-    ############ PLOT PAIRWISE DURATIONS ########
-    #################################################
-    ax2=plt.subplot(1,2,2)
-    im = plt.imshow(durations_matrix, cmap='viridis')
+    names= ['female','male','pup1','pup2']
+    clrs = ['red','blue','cyan','green']
 
     x_ticks=['female','male','pup1','pup2']
-    plt.xticks(np.arange(locs.shape[0]), x_ticks,rotation=15)
-    plt.yticks(np.arange(locs.shape[0]), x_ticks,rotation=75)
-    plt.tick_params(labelsize=20)
+    text_clr = 'red'
 
-    cbar = plt.colorbar()
-    cbar.set_label("time together (sec)", fontsize=20)
+    distance_threshold = 250 # # of pixels away assume 1 pixel ~= 0.5mm -> 20cm
+    time_window = 1*25 # no of seconds to consider
+    smoothing_window = 3
+    min_distance = 25 # number of frames window
+    #
 
+    # COMPUTE PAIRWISE INTERACTIONS
+    pair_interaction_times2 = []
+    triples_interaction_time2 = []
+    quad_interaction_times2 = []
+    multi_animal_durations2 = []
+    interactions2 = []
+    duration_matrix2 = []
 
-    # Loop over data dimensions and create text annotations.
-    if False:
-        for i in range(durations_matrix.shape[0]):
+    for locs in tqdm(locs_multi_hour):
+
+        #
+        locs = locs.transpose(1,0,2)
+        #print ("locs: ", locs.shape)
+
+        #
+        traces_23hrs = locs
+
+        animals=np.arange(locs.shape[0])
+        interactions = np.zeros((animals.shape[0],animals.shape[0]),'int32') + np.nan
+        durations_matrix = np.zeros((animals.shape[0], animals.shape[0]),'int32') + np.nan
+
+        # loop over all pairwise combinations
+        pair_interaction_times = []
+        pairs1 = list(combinations(animals,2))
+        for ctr_x, pair in enumerate(pairs1):
+            traces = []
+
+            # smooth out traces;
+            for k in pair:
+                traces1=traces_23hrs[k].copy()
+                traces1[:,0]=np.convolve(traces_23hrs[k,:,0], np.ones((smoothing_window,))/smoothing_window, mode='same')
+                traces1[:,1]=np.convolve(traces_23hrs[k,:,1], np.ones((smoothing_window,))/smoothing_window, mode='same')
+                traces1 = traces1
+                traces.append(traces1)
+
+            # COMPUTE PAIRWISE DISTANCES AND NEARBY TIMES POINTS
+            idx_array = []
+            diffs = np.sqrt((traces[0][:,0]-traces[1][:,0])**2+
+                            (traces[0][:,1]-traces[1][:,1])**2)
+            idx = np.where(diffs<distance_threshold)[0]
+
+            # COMPUTE TOTAL TIME TOGETHER
+            #print ("Pairwise: ", pair, idx.shape)
+            durations_matrix[pair[0],pair[1]]=idx.shape[0]/25
+
+            # COMPUTE # OF INTERACTIONS;
+            diffs_idx = idx[1:]-idx[:-1]
+            idx2 = np.where(diffs_idx>5)[0]
+            interactions[pair[0],pair[1]]=idx2.shape[0]
+
+            # SAVE TIMES OF INTERACTION
+            pair_interaction_times.append(idx)
+
+        # SYMMETRIZE MATRICES
+        for k in range(durations_matrix.shape[0]):
             for j in range(durations_matrix.shape[1]):
-                if np.isnan(durations_matrix[i, j])==True:
-                    continue
-                text = ax2.text(j, i, durations_matrix[i, j],
-                               ha="center", va="center", color=text_clr,
-                               fontsize=13)
+                if np.isnan(durations_matrix[k,j])==False:
+                    durations_matrix[j,k]=durations_matrix[k,j]
+                    interactions[j,k]=interactions[k,j]
 
-    ax2.set_title('time together (sec)',fontsize=20)
 
-    plt.suptitle(suptitle, fontsize=15)
+        #############################
+        # COMPUTE TRIPLE INTERACTIONS
 
-    plt.show()
+        multi_animal_durations = [] #np.zeros((animals.shape[0]+4),'int32') + np.nan
+        names_multi_animal =[]
+        ctr=0
+
+        pairs3 = list(combinations(animals,3))
+        triples_interaction_times = []
+        for ctr_x, pair in enumerate(pairs3):
+            names_multi_animal.append(names[pair[0]]+"\n"+ names[pair[1]]+"\n"+names[pair[2]]+"\n")
+            #names_multi_animal.append(names[pair[0]]+" - "+ names[pair[1]]+" - "+names[pair[2]])
+            traces = []
+
+            # COMPUTE LOCATIONS
+            for k in pair:
+                traces1=traces_23hrs[k].copy()
+                traces1[:,0]=np.convolve(traces_23hrs[k,:,0], np.ones((smoothing_window,))/smoothing_window, mode='same')
+                traces1[:,1]=np.convolve(traces_23hrs[k,:,1], np.ones((smoothing_window,))/smoothing_window, mode='same')
+                traces1 = traces1
+                traces.append(traces1)
+
+            # COMPUTE PAIRWISE DISTANCES AND NEARBY TIMES POINTS
+            idx_array = []
+            pairs2 = list(combinations(np.arange(3),2))
+            for pair_ in pairs2:
+                #print ("pair_", pair_)
+                diffs = np.sqrt((traces[pair_[0]][:,0]-traces[pair_[1]][:,0])**2+
+                                (traces[pair_[0]][:,1]-traces[pair_[1]][:,1])**2)
+                idx_temp = np.where(diffs<distance_threshold)[0]
+                #print ("pair_: ", pair_, idx_temp.shape)
+                idx_array.append(idx_temp)
+
+            # COMPUTE OVERLAP
+            idx3 = np.unique(np.hstack(set.intersection(*[set(x) for x in idx_array])))
+            #print (pair, "IDX3 4: ", len(idx3))
+            multi_animal_durations.append(len(idx3)/25)
+
+            # SAVE TIMES OF INTERACTION
+            triples_interaction_times.append(idx3)
+
+        #print ("")
+
+        #################################
+        # COMPUTE 4 ANIMAL INTERACTIONS
+        pairs = list(combinations(animals,4))
+        quad_interaction_times = []
+        for ctr_x, pair in enumerate(pairs):
+            names_multi_animal.append(names[pair[0]]+"\n"+ names[pair[1]]+"\n"+names[pair[2]]+"\n"+names[pair[3]])
+            #names_multi_animal.append(names[pair[0]]+" - "+ names[pair[1]]+" - "+names[pair[2]]+"  - "+names[pair[3]])
+            #print (pair)
+            traces = []
+            for k in pair:
+                traces1=traces_23hrs[k].copy()
+                traces1[:,0]=np.convolve(traces_23hrs[k,:,0], np.ones((smoothing_window,))/smoothing_window, mode='same')
+                traces1[:,1]=np.convolve(traces_23hrs[k,:,1], np.ones((smoothing_window,))/smoothing_window, mode='same')
+                traces1 = traces1
+                traces.append(traces1)
+
+            # loop over all combinations and get distances
+            pairs2 = list(combinations(animals,2))
+            idx_array = []
+            for pair2 in pairs2:
+                diffs = np.sqrt((traces[pair2[0]][:,0]-traces[pair2[1]][:,0])**2+
+                                 (traces[pair2[0]][:,1]-traces[pair2[1]][:,1])**2)
+                idx_temp = np.where(diffs<distance_threshold)[0]
+                #print ("pair2: ", pair2, idx_temp.shape)
+                idx_array.append(idx_temp)
+
+            # COMPUTE TOTAL TIME TOGETHER
+            #print ("idx_array: ", idx_array)
+            idx3 = set.intersection(*[set(x) for x in idx_array])
+            #print ("4 animals 4: ", len(idx3))
+            multi_animal_durations.append(len(idx3)/25)
+
+            # SAVE TIMES OF INTERACTION
+            quad_interaction_times.append(list(idx3)  )
+
+            ctr+=1
+
+        pair_interaction_times2.append(pair_interaction_times)
+        triples_interaction_time2.append(triples_interaction_times)
+        quad_interaction_times2.append(quad_interaction_times)
+        multi_animal_durations2.append(multi_animal_durations)
+        interactions2.append(interactions)
+        duration_matrix2.append(durations_matrix)
+
+    return (pair_interaction_times2,triples_interaction_time2, quad_interaction_times2, multi_animal_durations2, names_multi_animal, interactions2, duration_matrix2)
+#
+# def plot_multi_interactions(locs):
+#
+#     # PLOT MULTI ANIMAL DURATIONS
+#     fig=plt.figure()
+#     ax3=plt.subplot(1,1,1)
+#     handles, labels = ax3.get_legend_handles_labels()
+#
+#     import matplotlib.patches as mpatches
+#
+#     for k in range(len(names)):
+#         plt.bar(k, multi_animal_durations[k], 0.9, color=clrs[k])
+#
+#         patch = mpatches.Patch(color=clrs[k], label=names_multi_animal[k])
+#
+#         # handles is a list, so append manual patch
+#         handles.append(patch)
+#
+#     # plot the legend
+#     plt.legend(handles=handles,fontsize=20)
+#     plt.xticks([])
+#     plt.tick_params(labelsize=20)
+#     plt.xlim(-0.5,4.5)
+#     plt.ylabel("time together (sec)",fontsize=20)
+#
+#     #ax3.set_title("Duration Multi-animal interactions",fontsize=15)
+#     #################################################
+#     ######### PLOT INTERACTIONS PAIRWISE ############
+#     #################################################
+#     fig=plt.figure()
+#     ax1=plt.subplot(1,2,1)
+#
+#     im = plt.imshow(interactions, cmap='viridis')
+#     #print(locs.shape[0], x_ticks)
+#     plt.xticks(np.arange(locs.shape[0]), x_ticks,rotation=15)
+#     plt.yticks(np.arange(locs.shape[0]), x_ticks,rotation=75)
+#     plt.tick_params(labelsize=20)
+#     ax1.set_title("# of interactions",fontsize=20)
+#     plt.tick_params(labelsize=20)
+#
+#     cbar = plt.colorbar()
+#     cbar.set_label("# interactions", fontsize=20)
+#
+#     # Loop over data dimensions and create text annotations.
+#     if False:
+#         for i in range(interactions.shape[0]):
+#             for j in range(interactions.shape[1]):
+#                 if np.isnan(durations_matrix[i, j])==True:
+#                     continue
+#                 text = ax1.text(j, i, interactions[i, j],
+#                                ha="center", va="center", color=text_clr,
+#                                fontsize=13)
+#
+#     ##############################################
+#     ############ PLOT PAIRWISE DURATIONS ########
+#     #################################################
+#     ax2=plt.subplot(1,2,2)
+#     im = plt.imshow(durations_matrix, cmap='viridis')
+#
+#     x_ticks=['female','male','pup1','pup2']
+#     plt.xticks(np.arange(locs.shape[0]), x_ticks,rotation=15)
+#     plt.yticks(np.arange(locs.shape[0]), x_ticks,rotation=75)
+#     plt.tick_params(labelsize=20)
+#
+#     cbar = plt.colorbar()
+#     cbar.set_label("time together (sec)", fontsize=20)
+#
+#
+#     # Loop over data dimensions and create text annotations.
+#     if False:
+#         for i in range(durations_matrix.shape[0]):
+#             for j in range(durations_matrix.shape[1]):
+#                 if np.isnan(durations_matrix[i, j])==True:
+#                     continue
+#                 text = ax2.text(j, i, durations_matrix[i, j],
+#                                ha="center", va="center", color=text_clr,
+#                                fontsize=13)
+#
+#     ax2.set_title('time together (sec)',fontsize=20)
+#
+#     plt.suptitle(suptitle, fontsize=15)
+#
+#     plt.show()
 
 
 def plot_pairwise_interactions(locs, suptitle):

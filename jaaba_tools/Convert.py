@@ -1,5 +1,6 @@
 import matplotlib
 import matplotlib.pyplot as plt
+import scipy
 
 import numpy as np
 import os
@@ -105,9 +106,38 @@ class Convert():
     #
     #     self.angles = self.angles[self.start:self.end]
 
-    def get_angle_and_axes_section(self):
+    def median_filter(self, x):
 
-       #
+        for k in range(1000):
+            idx = np.where(np.isnan(x))[0]
+            if idx.shape[0]==0:
+                break
+
+            if idx[0]==0:
+                idx=idx[1:]
+            x[idx] = x[idx-1]
+
+        x = scipy.ndimage.median_filter(x, size=25)
+
+        return x
+
+
+    def get_angle_and_axes_section2(self):
+
+        from math import atan2, pi
+
+
+        def angle_trunc(a):
+            while a < 0.0:
+                a += pi * 2
+            return a
+
+        def getAngleBetweenPoints(x_orig, y_orig, x_landmark, y_landmark):
+            deltaY = y_landmark - y_orig
+            deltaX = x_landmark - x_orig
+            return angle_trunc(atan2(deltaY, deltaX)) #* 180 / PI
+
+  #
         if self.end is None:
             self.end = self.tracks.shape[0]
 
@@ -118,35 +148,25 @@ class Convert():
                                   self.tracks.shape[1],
                                   2),
                                     'float32')+np.nan
-
-
         #
-        deg_scale = 180/3.1415926
-        deg_scale = 1
-        #
-        for k in tqdm(range(self.start, self.end,1)):
-            for a in range(self.tracks.shape[1]):
-                #x = self.tracks[k,a,:,0]
-                #y = self.tracks[k,a,:,1]
+        for a in range(self.tracks.shape[1]):
+            for k in tqdm(range(self.start, self.end,1)):
                 x = self.tracks[k,a,5:10,0]
                 y = self.tracks[k,a,5:10,1]
                 idx = np.where(np.isnan(x)==False)[0]
                 if idx.shape[0]>0:
                     x=x[idx]
                     y=y[idx]
-                    with warnings.catch_warnings():
-                        warnings.filterwarnings('error')
-                        try:
-                            m,b = np.polyfit(x, y, 1)
-                        except np.RankWarning:
-                            pass
-                    #
-                    angle = np.arctan(m)*deg_scale
-                    self.angles[k,a] = angle
-                    if x[0]<x[-1]:
-                        self.angles[k,a]+=180
 
-                    # stack locations
+                    if x.shape[0]>=2:
+                        angle = getAngleBetweenPoints(x[-1], y[-1],
+                                                      x[0], y[0])
+                    else:
+                        continue
+
+                    self.angles[k,a] = angle
+
+                    #
                     locs = np.vstack((x,y)).T
 
                     # rotate
@@ -155,6 +175,7 @@ class Convert():
                     R = np.array(((c, -s), (s, c)))
                     locs_r = locs@R
 
+
                     # Reject outliers that are substantially outside of data
                     x = self.reject_outliers(locs_r[:,0])
                     y = self.reject_outliers(locs_r[:,1])
@@ -162,8 +183,74 @@ class Convert():
                     self.axes[k,a,0] = np.max(x)-np.min(x)
                     self.axes[k,a,1] = np.max(y)-np.min(y)
 
+            # apply 1D angle filter
+            if self.apply_median_filter:
 
-                    #self.angles[k,a] = np.arctan(m)*deg_scale
+                self.angles[:,a] = self.median_filter((self.angles[:,a]))
+                self.axes[:,a,0] = self.median_filter(self.axes[:,a,0])
+                self.axes[:,a,1] = self.median_filter(self.axes[:,a,1])
+
+
+    #
+    # def get_angle_and_axes_section(self):
+    #
+    #    #
+    #     if self.end is None:
+    #         self.end = self.tracks.shape[0]
+    #
+    #     self.angles = np.zeros((self.end-self.start,
+    #                             self.tracks.shape[1]),
+    #                             'float32')+np.nan
+    #     self.axes = np.zeros((self.end-self.start,
+    #                               self.tracks.shape[1],
+    #                               2),
+    #                                 'float32')+np.nan
+    #
+    #
+    #     #
+    #     deg_scale = 180/3.1415926
+    #     deg_scale = 1
+    #     #
+    #     for k in tqdm(range(self.start, self.end,1)):
+    #         for a in range(self.tracks.shape[1]):
+    #             #x = self.tracks[k,a,:,0]
+    #             #y = self.tracks[k,a,:,1]
+    #             x = self.tracks[k,a,5:10,0]
+    #             y = self.tracks[k,a,5:10,1]
+    #             idx = np.where(np.isnan(x)==False)[0]
+    #             if idx.shape[0]>0:
+    #                 x=x[idx]
+    #                 y=y[idx]
+    #                 with warnings.catch_warnings():
+    #                     warnings.filterwarnings('error')
+    #                     try:
+    #                         m,b = np.polyfit(x, y, 1)
+    #                     except np.RankWarning:
+    #                         pass
+    #                 #
+    #                 angle = np.arctan(m)*deg_scale
+    #                 self.angles[k,a] = angle
+    #                 if x[0]<x[-1]:
+    #                     self.angles[k,a]+=180
+    #
+    #                 # stack locations
+    #                 locs = np.vstack((x,y)).T
+    #
+    #                 # rotate
+    #                 theta = np.radians(angle)
+    #                 c, s = np.cos(theta), np.sin(theta)
+    #                 R = np.array(((c, -s), (s, c)))
+    #                 locs_r = locs@R
+    #
+    #                 # Reject outliers that are substantially outside of data
+    #                 x = self.reject_outliers(locs_r[:,0])
+    #                 y = self.reject_outliers(locs_r[:,1])
+    #
+    #                 self.axes[k,a,0] = np.max(x)-np.min(x)
+    #                 self.axes[k,a,1] = np.max(y)-np.min(y)
+    #
+    #
+    #                 #self.angles[k,a] = np.arctan(m)*deg_scale
 
     # remove outliars
     def reject_outliers(self, data, m = 4.):
@@ -172,57 +259,57 @@ class Convert():
         s = d/mdev if mdev else 0.
         return data[s<m]
 
-    def get_axes(self):
-
-        #
-        fname_out = self.fname[:-4]+"_major_minor.npy"
-
-        if os.path.exists(fname_out)==False:
-
-            self.axes = np.zeros((self.tracks.shape[0],
-                                  self.tracks.shape[1],
-                                  2),
-                                    'float32')+np.nan
-
-            #
-            for k in trange(self.tracks.shape[0]):
-                for a in range(self.tracks.shape[1]):
-
-                    x = self.tracks[k,a,:,0]
-                    y = self.tracks[k,a,:,1]
-                    idx = np.where(np.isnan(x)==False)[0]
-
-                    #
-                    if idx.shape[0]>0:
-
-                        # load data
-                        x=x[idx]
-                        y=y[idx]
-                        angle = self.angles[k,a]
-
-                        # stack locations
-                        locs = np.vstack((x,y)).T
-
-                        # rotate
-                        theta = np.radians(angle)
-                        c, s = np.cos(theta), np.sin(theta)
-                        R = np.array(((c, -s), (s, c)))
-                        locs_r = locs@R
-
-
-
-                        # Reject outliers that are substantially outside of data
-                        x = self.reject_outliers(locs_r[:,0])
-                        y = self.reject_outliers(locs_r[:,1])
-
-                        self.axes[k,a,0] = np.max(x)-np.min(x)
-                        self.axes[k,a,1] = np.max(y)-np.min(y)
-
-            np.save(fname_out, self.axes)
-        else:
-            self.axes=np.load(fname_out)
-
-        self.axes = self.axes[self.start:self.end]/self.scale
+    # def get_axes(self):
+    #
+    #     #
+    #     fname_out = self.fname[:-4]+"_major_minor.npy"
+    #
+    #     if os.path.exists(fname_out)==False:
+    #
+    #         self.axes = np.zeros((self.tracks.shape[0],
+    #                               self.tracks.shape[1],
+    #                               2),
+    #                                 'float32')+np.nan
+    #
+    #         #
+    #         for k in trange(self.tracks.shape[0]):
+    #             for a in range(self.tracks.shape[1]):
+    #
+    #                 x = self.tracks[k,a,:,0]
+    #                 y = self.tracks[k,a,:,1]
+    #                 idx = np.where(np.isnan(x)==False)[0]
+    #
+    #                 #
+    #                 if idx.shape[0]>0:
+    #
+    #                     # load data
+    #                     x=x[idx]
+    #                     y=y[idx]
+    #                     angle = self.angles[k,a]
+    #
+    #                     # stack locations
+    #                     locs = np.vstack((x,y)).T
+    #
+    #                     # rotate
+    #                     theta = np.radians(angle)
+    #                     c, s = np.cos(theta), np.sin(theta)
+    #                     R = np.array(((c, -s), (s, c)))
+    #                     locs_r = locs@R
+    #
+    #
+    #
+    #                     # Reject outliers that are substantially outside of data
+    #                     x = self.reject_outliers(locs_r[:,0])
+    #                     y = self.reject_outliers(locs_r[:,1])
+    #
+    #                     self.axes[k,a,0] = np.max(x)-np.min(x)
+    #                     self.axes[k,a,1] = np.max(y)-np.min(y)
+    #
+    #         np.save(fname_out, self.axes)
+    #     else:
+    #         self.axes=np.load(fname_out)
+    #
+    #     self.axes = self.axes[self.start:self.end]/self.scale
 
     #
     def convert_npy_to_jaaba(self):
@@ -232,11 +319,13 @@ class Convert():
             end = self.tracks_spine.shape[0]
 
         # get rotations
-        self.get_angle_and_axes_section()
+        self.get_angle_and_axes_section2()
 
         # get body shrinking/stretching
-        #self.get_axes()
         self.axes = self.axes/self.scale
+
+        # shirnk axes a bit
+        self.axes = self.axes/2.5
 
         #
         trx_array=[]
@@ -250,6 +339,10 @@ class Convert():
             idx = np.where(x==0)[0]
             x[idx]=np.nan
             y[idx]=np.nan
+
+            if self.apply_median_filter:
+                x = self.median_filter(x)
+                y = self.median_filter(y)
 
             # convert values according to scale:
             if self.scale !=1:
