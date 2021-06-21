@@ -32,6 +32,20 @@ class Convert():
         self.tracks = np.load(self.fname)
         print (" full features track data: ", self.tracks.shape)
 
+        self.node_names = ['nose',          # 0
+                           'lefteye',       # 1
+                           'righteye',      # 2
+                           'leftear',       # 3
+                           'rightear',      # 4
+                           'spine1',        # 5
+                           'spine2',        # 6
+                           'spine3',        # 7
+                           'spine4',        # 8
+                           'spine5',        # 9
+                           'tail1',         # 10
+                           'tail2',         # 11
+                           'tail3',         # 12
+                           'tail4']         # 13
 
 
         #
@@ -49,7 +63,7 @@ class Convert():
                                           self.tracks.shape[1],
                                           self.tracks.shape[3]),
                                          'float32')
-            ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2
+            ids = [6,7,5,8,4,3,2,1,0,9,10,11,12]  # centred on spine2
             #points=[nose, lefteye, righteye, leftear,rightear, spine1, spine2, spine3,spine4]
             #         0       1        2        3         4      5        6        7      8
 
@@ -58,53 +72,25 @@ class Convert():
                 # loop over animals
                 for a in range(self.tracks.shape[1]):
                     # loop over features to find nearest to spine2
-                    for id_ in ids:
-                        if np.isnan(self.tracks[n,a,id_,0])==False:
-                            self.tracks_spine[n,a]=self.tracks[n,a,id_]
 
-                            break
+                    idx = np.where(np.isnan(self.tracks[n,a,:,0])==False)[0]
+                    if idx.shape[0]>=3:
+                        #print ("idx: ", idx)
+                        x_idx = idx[self.reject_outliers(self.tracks[n,a,idx,0])]
+                        y_idx = idx[self.reject_outliers(self.tracks[n,a,idx,1])]
+                        z_idx = np.intersect1d(x_idx, y_idx)
+                        #print (" zidx: ", z_idx)
+
+                        #print ("self.tracks[n,a,idx[z_idx]]: ", self.tracks[n,a,z_idx])
+                        for id_ in ids:
+                            if id_ in z_idx:
+                                self.tracks_spine[n,a]=self.tracks[n,a,id_]
+
+                                break
             np.save(fname_out,
                     self.tracks_spine)
         else:
             self.tracks_spine = np.load(fname_out)
-
-    # def get_angle(self):
-    #
-    #     #
-    #     fname_out = self.fname[:-4]+"_angles.npy"
-    #
-    #     if os.path.exists(fname_out)==False:
-    #
-    #         #
-    #         self.angles = np.zeros((self.tracks.shape[0],
-    #                                 self.tracks.shape[1]),
-    #                                 'float32')+np.nan
-    #         #
-    #         deg_scale = 180/3.1415926
-    #         deg_scale = 1
-    #         #
-    #         for k in trange(self.tracks.shape[0]):
-    #             for a in range(self.tracks.shape[1]):
-    #                 #x = self.tracks[k,a,:,0]
-    #                 #y = self.tracks[k,a,:,1]
-    #                 x = self.tracks[k,a,5:10,0]
-    #                 y = self.tracks[k,a,5:10,1]
-    #                 idx = np.where(np.isnan(x)==False)[0]
-    #                 if idx.shape[0]>0:
-    #                     x=x[idx]
-    #                     y=y[idx]
-    #                     m,b = np.polyfit(y, x, 1)
-    #                     self.angles[k,a] = np.arctan(m)*deg_scale
-    #                     if x[0]<x[-1]:
-    #                         self.angles[k,a]+=180
-    #                     #self.angles[k,a] = np.arctan(m)*deg_scale
-    #
-    #         np.save(fname_out,
-    #                 self.angles)
-    #     else:
-    #         self.angles = np.load(fname_out)
-    #
-    #     self.angles = self.angles[self.start:self.end]
 
     def median_filter(self, x):
 
@@ -125,7 +111,6 @@ class Convert():
     def get_angle_and_axes_section2(self):
 
         from math import atan2, pi
-
 
         def angle_trunc(a):
             while a < 0.0:
@@ -149,39 +134,77 @@ class Convert():
                                   2),
                                     'float32')+np.nan
         #
+        # grab nose which is ID = 0 and ids 5:9 for body
+
         for a in range(self.tracks.shape[1]):
             for k in tqdm(range(self.start, self.end,1)):
                 x = self.tracks[k,a,5:10,0]
                 y = self.tracks[k,a,5:10,1]
+
+                # # try adding the nose location also
+                try:
+                    x = np.concatenate((self.tracks[k,a,0,0], x))
+                    y = np.concatenate((self.tracks[k,a,0,1], y))
+                except:
+                    pass
+
                 idx = np.where(np.isnan(x)==False)[0]
                 if idx.shape[0]>0:
                     x=x[idx]
                     y=y[idx]
 
-                    if x.shape[0]>=2:
-                        angle = getAngleBetweenPoints(x[-1], y[-1],
-                                                      x[0], y[0])
-                    else:
+                    if x.shape[0]<=3:
                         continue
+
+                    angle = getAngleBetweenPoints(np.mean(x[2:4]), np.mean(y[2:4]),
+                                                  np.mean(x[0:2]), np.mean(y[0:2]))
 
                     self.angles[k,a] = angle
 
-                    #
-                    locs = np.vstack((x,y)).T
 
-                    # rotate
-                    theta = np.radians(angle)
-                    c, s = np.cos(theta), np.sin(theta)
-                    R = np.array(((c, -s), (s, c)))
-                    locs_r = locs@R
+                    if False:
+                        # find 2 consecutive values and compute the axes as a function of those values NOT
+                        #  standard deviatoin and other measures that average over
+                        #  BUT DOESN"T WORK, MUCH TOO NOISY
+                        x_idx = self.reject_outliers(x)
+                        y_idx = self.reject_outliers(y)
+                        z_idx = np.intersect1d(x_idx, y_idx)
+                        x=x[z_idx]
+                        y=y[z_idx]
+
+                        # convert back to original animal sequential ids
+                        z_idx_original = idx[z_idx]
+                        # find 2 consecutive points and use them as measure of length
+                        for i in range(z_idx_original.shape[0]-1):
+                            if z_idx_original[i+1] - z_idx_original[i] == 1:
+                                self.axes[k,a,1] = x[i-1]-x[i]
+                                self.axes[k,a,0] = y[i-1]-y[i]
+
+                    else:
+                        #
+                        locs = np.vstack((x,y)).T
+
+                        # rotate
+                        theta = np.radians(angle)
+                        c, s = np.cos(theta), np.sin(theta)
+                        R = np.array(((c, -s), (s, c)))
+                        locs_r = locs@R
 
 
-                    # Reject outliers that are substantially outside of data
-                    x = self.reject_outliers(locs_r[:,0])
-                    y = self.reject_outliers(locs_r[:,1])
+                        # Reject outliers that are substantially outside of data
+                        x_idx = self.reject_outliers(locs_r[:,0])
+                        y_idx = self.reject_outliers(locs_r[:,1])
 
-                    self.axes[k,a,0] = np.max(x)-np.min(x)
-                    self.axes[k,a,1] = np.max(y)-np.min(y)
+                        z_idx = np.intersect1d(x_idx, y_idx)
+                        x=locs_r[z_idx,0]
+                        y=locs_r[z_idx,1]
+
+                        #
+                        #self.axes[k,a,1] = np.max(x)-np.min(x)
+                        #self.axes[k,a,0] = np.max(y)-np.min(y)
+
+                        self.axes[k,a,1] = np.std(x)
+                        self.axes[k,a,0] = np.std(y)
 
             # apply 1D angle filter
             if self.apply_median_filter:
@@ -190,126 +213,28 @@ class Convert():
                 self.axes[:,a,0] = self.median_filter(self.axes[:,a,0])
                 self.axes[:,a,1] = self.median_filter(self.axes[:,a,1])
 
-
+    # # remove outliars
+    # def reject_outliers(self, data, m = 4.):
+    #     d = np.abs(data - np.median(data))
+    #     mdev = np.median(d)
+    #     s = d/mdev if mdev else 0.
     #
-    # def get_angle_and_axes_section(self):
+    #     idx = np.where(s<m)[0]
     #
-    #    #
-    #     if self.end is None:
-    #         self.end = self.tracks.shape[0]
-    #
-    #     self.angles = np.zeros((self.end-self.start,
-    #                             self.tracks.shape[1]),
-    #                             'float32')+np.nan
-    #     self.axes = np.zeros((self.end-self.start,
-    #                               self.tracks.shape[1],
-    #                               2),
-    #                                 'float32')+np.nan
-    #
-    #
-    #     #
-    #     deg_scale = 180/3.1415926
-    #     deg_scale = 1
-    #     #
-    #     for k in tqdm(range(self.start, self.end,1)):
-    #         for a in range(self.tracks.shape[1]):
-    #             #x = self.tracks[k,a,:,0]
-    #             #y = self.tracks[k,a,:,1]
-    #             x = self.tracks[k,a,5:10,0]
-    #             y = self.tracks[k,a,5:10,1]
-    #             idx = np.where(np.isnan(x)==False)[0]
-    #             if idx.shape[0]>0:
-    #                 x=x[idx]
-    #                 y=y[idx]
-    #                 with warnings.catch_warnings():
-    #                     warnings.filterwarnings('error')
-    #                     try:
-    #                         m,b = np.polyfit(x, y, 1)
-    #                     except np.RankWarning:
-    #                         pass
-    #                 #
-    #                 angle = np.arctan(m)*deg_scale
-    #                 self.angles[k,a] = angle
-    #                 if x[0]<x[-1]:
-    #                     self.angles[k,a]+=180
-    #
-    #                 # stack locations
-    #                 locs = np.vstack((x,y)).T
-    #
-    #                 # rotate
-    #                 theta = np.radians(angle)
-    #                 c, s = np.cos(theta), np.sin(theta)
-    #                 R = np.array(((c, -s), (s, c)))
-    #                 locs_r = locs@R
-    #
-    #                 # Reject outliers that are substantially outside of data
-    #                 x = self.reject_outliers(locs_r[:,0])
-    #                 y = self.reject_outliers(locs_r[:,1])
-    #
-    #                 self.axes[k,a,0] = np.max(x)-np.min(x)
-    #                 self.axes[k,a,1] = np.max(y)-np.min(y)
-    #
-    #
-    #                 #self.angles[k,a] = np.arctan(m)*deg_scale
+    #     return data[s<m]
 
     # remove outliars
-    def reject_outliers(self, data, m = 4.):
+    def reject_outliers(self, data, m = 4.):  # number of deviations away
         d = np.abs(data - np.median(data))
         mdev = np.median(d)
-        s = d/mdev if mdev else 0.
-        return data[s<m]
 
-    # def get_axes(self):
-    #
-    #     #
-    #     fname_out = self.fname[:-4]+"_major_minor.npy"
-    #
-    #     if os.path.exists(fname_out)==False:
-    #
-    #         self.axes = np.zeros((self.tracks.shape[0],
-    #                               self.tracks.shape[1],
-    #                               2),
-    #                                 'float32')+np.nan
-    #
-    #         #
-    #         for k in trange(self.tracks.shape[0]):
-    #             for a in range(self.tracks.shape[1]):
-    #
-    #                 x = self.tracks[k,a,:,0]
-    #                 y = self.tracks[k,a,:,1]
-    #                 idx = np.where(np.isnan(x)==False)[0]
-    #
-    #                 #
-    #                 if idx.shape[0]>0:
-    #
-    #                     # load data
-    #                     x=x[idx]
-    #                     y=y[idx]
-    #                     angle = self.angles[k,a]
-    #
-    #                     # stack locations
-    #                     locs = np.vstack((x,y)).T
-    #
-    #                     # rotate
-    #                     theta = np.radians(angle)
-    #                     c, s = np.cos(theta), np.sin(theta)
-    #                     R = np.array(((c, -s), (s, c)))
-    #                     locs_r = locs@R
-    #
-    #
-    #
-    #                     # Reject outliers that are substantially outside of data
-    #                     x = self.reject_outliers(locs_r[:,0])
-    #                     y = self.reject_outliers(locs_r[:,1])
-    #
-    #                     self.axes[k,a,0] = np.max(x)-np.min(x)
-    #                     self.axes[k,a,1] = np.max(y)-np.min(y)
-    #
-    #         np.save(fname_out, self.axes)
-    #     else:
-    #         self.axes=np.load(fname_out)
-    #
-    #     self.axes = self.axes[self.start:self.end]/self.scale
+        if mdev:
+            s = d/mdev
+        else:
+            s = 0.
+
+        idx = np.where(s<m)[0]
+        return idx
 
     #
     def convert_npy_to_jaaba(self):
@@ -325,7 +250,9 @@ class Convert():
         self.axes = self.axes/self.scale
 
         # shirnk axes a bit
-        self.axes = self.axes/2.5
+        #self.axes = self.axes/2.5
+        self.axes[:,:,0] = self.axes[:,:,0]#/5
+        self.axes[:,:,1] = self.axes[:,:,1]#/2.5
 
         #
         trx_array=[]
