@@ -3,6 +3,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 #
 import matplotlib.cm as cm
+import sleap
+
+import h5py
+from sklearn.linear_model import BayesianRidge
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.neighbors import KNeighborsRegressor
+
 
 #
 import numpy as np
@@ -32,6 +40,35 @@ class CentreBody():
 
     def __init__(self):
 
+
+        self.March16_file_order = [
+                '2020-3-16_11-56-56-704655',  # day time starts correct day
+                '2020-3-16_12-57-12-418305',
+                '2020-3-16_01-57-27-327194',
+                '2020-3-16_02-57-41-995158',
+                '2020-3-16_03-57-56-902379',
+                '2020-3-16_04-58-11-998956',
+                '2020-3-16_05-58-27-193818',
+                '2020-3-16_06-58-43-678014',
+                '2020-3-16_07-59-00-362242',
+                '2020-3-16_08-59-17-534732',
+                '2020-3-16_09-59-34-731308',
+                '2020-3-16_10-59-50-448686',
+
+                '2020-3-16_12-54-07-193951',  # night time of previous day though
+                '2020-3-16_01-54-23-358257',
+                '2020-3-16_02-54-39-170978',
+                '2020-3-16_03-54-54-231226',
+                '2020-3-16_04-55-09-841582',
+                '2020-3-16_05-55-25-305681',
+                '2020-3-16_06-55-40-714236',
+                '2020-3-16_07-55-55-775234',
+                '2020-3-16_08-56-11-096689',
+                '2020-3-16_09-56-26-362091',
+                '2020-3-16_10-56-41-406701',
+                ]
+
+
         #
         self.node_names = ['nose',          # 0
                           'lefteye',       # 1
@@ -48,7 +85,28 @@ class CentreBody():
                           'tail3',         # 12
                           'tail4']         # 13
 
+        #
         self.feature_ids = np.array([0,5,6,7,8,9])
+
+        #
+        self.animal_ids = np.arange(4)
+
+
+    def process_slp(self):
+
+        self.fnames_slp = glob.glob(self.root_dir+"/*.slp")
+
+        if self.parallel:
+            parmap.map(convert_slp, self.fnames_slp,
+                       pm_processes=16,
+                       pm_pbar=True)
+
+        else:
+
+            for fname in self.fnames_slp:
+                self.fname_slp = fname
+                self.convert_slp()
+
 
 
     def get_fnames(self):
@@ -66,75 +124,10 @@ class CentreBody():
                       pm_processes=8,
                       pm_pbar=True)
         else:
-            for fname in fnames:
-                pass
+            for fname in self.fnames:
+                filter_data1(fname)
 
 
-
-    def reject_outliers2(self, x,y,
-                        max_dist_pairwise,
-                        max_dist_all=100):  # number of deviations away
-
-        ''' Function returns indexes for which [x,y] array points are close to at least 2 other points
-
-            Goal 1: to generate very clean data which has 6 body features well connected for downstream analysis and imputation
-
-            Goal 2: to remove outliers and leave small clusters of feautres only
-
-        '''
-
-        # method 2: explicitly reject points that are > max distance from nearest 2 points
-        temp = np.vstack((x,y))
-        dists = scipy.spatial.distance.cdist(temp.T, temp.T)
-
-        # first check points inside the array to ensure they have 2 close neighbours
-        # if they don't, remove them so other points can't be connected to them.
-        idx_far = []
-        for k in range(1,temp.shape[1]-1,1):
-            #idx = np.where(dists[k]<=max_dist_pairwise)[0]
-            temp = dists[k]
-            if np.abs(temp[k]-temp[k-1])>max_dist_pairwise or np.abs(temp[k]-temp[k+1])>max_dist_pairwise:
-                idx_far.append(k)
-                dists[:,k]= 1E3
-
-        # check start and end points to ensure they have nearby val
-        if np.abs(dists[0,1])>max_dist_pairwise:
-            idx_far.append(0)
-            #print (dists[0], 'excluded ', 0)
-
-        if np.abs(dists[dists.shape[1]-1,dists.shape[1]-2])>max_dist_pairwise:
-            idx_far.append(dists.shape[1]-1)
-            #print (dists[0], 'excluded ', dists.shape[1]-1)
-
-
-        x[idx_far] = np.nan
-        y[idx_far] = np.nan
-
-        return x, y
-
-
-    def reject_outliers1(self, fname, feature_ids, max_dist):
-
-        fname2 = fname.replace('.npy','_median_filtered.npy')
-
-        fname_out = fname2.replace('.npy','_outliers.npy')
-
-        if os.path.exists(fname_out)==False:
-
-            data = np.load(fname2)
-            for f in range(0,data.shape[0],1):
-
-                for k in range(data.shape[1]):
-                    #
-                    x = data[f,k,feature_ids,0]
-                    y = data[f,k,feature_ids,1]
-
-                    x, y = self.reject_outliers2(x,y, max_dist)
-
-                    data[f,k,feature_ids,0] = x
-                    data[f,k,feature_ids,1] = y
-
-            np.save(fname_out, data)
 
     def reject_outliers(self, max_dist=40):
 
@@ -143,50 +136,16 @@ class CentreBody():
         self.fnames = glob.glob(self.root_dir+"/*_compressed.npy")
 
         if self.parallel:
-            parmap.map(self.reject_outliers1, self.fnames,
+            parmap.map(reject_outliers1, self.fnames,
                        self.feature_ids,
                        max_dist,
                        pm_processes=8,
                        pm_pbar=True)
         else:
-            for fname in fnames:
-                pass
-
-
-    def centre_and_align2(self, data, frame, centre_pt=0):
-
-        if True:
-            # centre the data on the nose
-            data[:,0] -= data[centre_pt,0]
-            data[:,1] -= data[centre_pt,1]
-
-            # get angle between +x axis and head location (i.e. 2nd position)
-            t = -np.arctan2(*data[1].T[::-1])-np.pi/2
-
-            # get rotation
-            rotmat = np.array([[np.cos(t), -np.sin(t)],
-                               [np.sin(t),  np.cos(t)]])
-
-            # Apply rotation to each row of m
-            m2 = (rotmat @ data.T).T
-
-            return m2
-
-
-    def centre_and_align(self):
-
-        print ("  ... center and aligning ...")
-
-        self.fnames = glob.glob(self.root_dir+"/*_compressed.npy")
-
-        if self.parallel:
-            parmap.map(self.centre_and_align1, self.fnames,
-                       self.feature_ids,
-                       pm_processes=8,
-                       pm_pbar=True)
-        else:
-            for fname in fnames:
-                pass
+            for fname in tqdm(self.fnames):
+                reject_outliers1(fname,
+                                      self.feature_ids,
+                                      max_dist)
 
 
     def centre_and_align1(self, fname,
@@ -239,76 +198,116 @@ class CentreBody():
 
             np.save(fname_out, features_full)
 
-    def load_processed_data(self, data_type=1, remove_nans=True):
 
-        ''' data_type can be 3 types:
-            0: filtered, outlier cleaned, centred and rotated on the nose/head
-            1: filtered, outlier cleaned <- currently used
-            2: filtered only <- very noisy data with many outlier vals
+    def centre_and_align2(self, data, frame, centre_pt=0):
+
+        if True:
+            # centre the data on the nose
+            data[:,0] -= data[centre_pt,0]
+            data[:,1] -= data[centre_pt,1]
+
+            # get angle between +x axis and head location (i.e. 2nd position)
+            # 2ND POSITION ALIGNMENT
+            t = -np.arctan2(*data[1].T[::-1])-np.pi/2
+
+            # get rotation
+            rotmat = np.array([[np.cos(t), -np.sin(t)],
+                               [np.sin(t),  np.cos(t)]])
+
+            # Apply rotation to each row of m
+            m2 = (rotmat @ data.T).T
+
+            return m2
+
+    def centre_and_align_all_pairs(self):
+
+        self.fnames = glob.glob(self.root_dir+"/*_compressed.npy")
+
+        feature_ids = np.arange(6)
+        for f1 in trange(feature_ids.shape[0]):
+            for f2 in range(f1+1, feature_ids.shape[0],1):
+
+                #print (f1,f2)
+                if self.parallel:
+                    parmap.map(centre_and_align1_pairwise, self.fnames,
+                               self.feature_ids,
+                               f1,
+                               f2,
+                               pm_processes=8,
+                               # pm_pbar=True
+                               )
+                else:
+                    for fname in self.fnames:
+
+                        centre_and_align1_pairwise(fname,
+                                                   self.feature_ids,
+                                                   f1,
+                                                   f2)
+        print (" DONE Generating 2-point ground truth datasets for imputation")
+
+
+    def centre_and_align(self):
+
+        print ("  ... center and aligning ...")
+
+        self.fnames = glob.glob(self.root_dir+"/*_compressed.npy")
+
+        if self.parallel:
+            parmap.map(self.centre_and_align1, self.fnames,
+                       self.feature_ids,
+                       pm_processes=8,
+                       pm_pbar=True)
+        else:
+            for fname in fnames:
+                pass
+
+
+    def load_processed_data(self, f1, f2, data_type=1, remove_nans=True):
+
+        ''' NEW DATA LOADER
+             data_type can be 3 types:
+            0: filtered, outlier cleaned, centred and rotated to specifci 2 features
+            1: not used
+            2: not used
 
             remove_nans - cleans up the data so only full body axis data is used
             True: loading clean data for model training
             False: loading all data for prediction
 
         '''
-
-        March16_file_order = [
-
-        '2020-3-16_11-56-56-704655',  # day time starts correct day
-        '2020-3-16_12-57-12-418305',
-        '2020-3-16_01-57-27-327194',
-        '2020-3-16_02-57-41-995158',
-        '2020-3-16_03-57-56-902379',
-        '2020-3-16_04-58-11-998956',
-        '2020-3-16_05-58-27-193818',
-        '2020-3-16_06-58-43-678014',
-        '2020-3-16_07-59-00-362242',
-        '2020-3-16_08-59-17-534732',
-        '2020-3-16_09-59-34-731308',
-        '2020-3-16_10-59-50-448686',
-
-        '2020-3-16_12-54-07-193951',  # night time of previous day though
-        '2020-3-16_01-54-23-358257',
-        '2020-3-16_02-54-39-170978',
-        '2020-3-16_03-54-54-231226',
-        '2020-3-16_04-55-09-841582',
-        '2020-3-16_05-55-25-305681',
-        '2020-3-16_06-55-40-714236',
-        '2020-3-16_07-55-55-775234',
-        '2020-3-16_08-56-11-096689',
-        '2020-3-16_09-56-26-362091',
-        '2020-3-16_10-56-41-406701',
-        ]
+        print ("   note: pipeline currently applied only to Cohort1 March 16th datasets")
 
         # stack the postures for each animal for the day
         features_array = []
         for k in range(4):
             features_array.append([])
 
-        for file in tqdm(March16_file_order):
+        for file in self.March16_file_order:
 
             # this data is filtered, outlier triaged + centred to nose and aligned to face up
             if data_type==0:
-                fname = glob.glob(os.path.join(self.root_dir,file+"*_centre_aligned.npy").replace("-","_"))[0]
-                d3 = np.load(fname)
+                fname = glob.glob(os.path.join(self.root_dir,file+
+                                               "*_median_filtered_outliers_centre_aligned_"+
+                                               str(f1)+"_"+str(f2)+".npz").replace("-","_"))[0]
+                # load data + angles + translations
+                temp = np.load(fname)
+                d3 = temp['features_full']
+                #d3 = d3[:,:,self.feature_ids]  Data already limited to features
 
             # this data is filtered and outlier triaged
             if data_type==1:
-                fname = glob.glob(os.path.join(self.root_dir,file+"*_median_filtered_outliers.npy").replace("-","_"))[0]
-
-                d3 = np.load(fname)
-                d3 = d3[:,:,self.feature_ids]
+                print (" DATA NOT AVAILABLE ...")
+                self.features_array = None
+                return
 
             # this data is not outlier traiged; - very poor results/bad to work with
             if data_type==2:
-                fname = glob.glob(os.path.join(cb.root_dir,file+"*_median_filtered.npy").replace("-","_"))[0]
+                print (" DATA NOT AVAILABLE ...")
+                self.features_array = None
+                return
 
-                d3 = np.load(fname)
-                d3 = d3[:,:,self.feature_ids]
-
-            #print ("d3: ", d3.shape)
             # loop over animals and keep only complete data (i.e. 6 pts)
-            for k in range(4):
+            for k in range(self.animal_ids.shape[0]):
 
                 # find nans and delete any frame that is missing even a single value for that animal
                 if remove_nans:
@@ -331,12 +330,330 @@ class CentreBody():
         # return stacked feature array
         self.features_array = features_array
 
+        print (" DATA SIZES: ")
+        print (" female [n_samples, n_featres, xy]: ", np.vstack(self.features_array[0]).shape)
+        print (" male:                              ", np.vstack(self.features_array[1]).shape)
+        print (" pup1:                              ", np.vstack(self.features_array[2]).shape)
+        print (" pup2:                              ", np.vstack(self.features_array[3]).shape)
+
+
+
+def load_processed_data_stand_alone(f1, f2,
+                                    March16_file_order,
+                                    root_dir,
+                                    animal_ids,
+                                    data_type=0,
+                                    remove_nans=True):
+
+
+
+    ''' NEW DATA LOADER
+         data_type can be 3 types:
+        0: filtered, outlier cleaned, centred and rotated to specifci 2 features
+        1: not used
+        2: not used
+
+        remove_nans - cleans up the data so only full body axis data is used
+        True: loading clean data for model training
+        False: loading all data for prediction
+
+    '''
+
+    print ("   note: pipeline currently applied only to Cohort1 March 16th datasets")
+
+    # stack the postures for each animal for the day
+    features_array = []
+    for k in range(4):
+        features_array.append([])
+
+    for file in March16_file_order:
+
+        # this data is filtered, outlier triaged + centred to nose and aligned to face up
+        if data_type==0:
+            temp_temp = os.path.join(root_dir,file+
+                                           "*_median_filtered_outliers_centre_aligned_"+
+                                           str(f1)+"_"+str(f2)+".npz").replace("-","_")
+            fname = glob.glob(temp_temp)[0]
+
+            # load data + angles + translations
+            temp = np.load(fname)
+            d3 = temp['features_full']
+            #d3 = d3[:,:,self.feature_ids]  Data already limited to features
+
+        # this data is filtered and outlier triaged
+        if data_type==1:
+            print (" DATA NOT AVAILABLE ...")
+            return
+
+        # this data is not outlier traiged; - very poor results/bad to work with
+        if data_type==2:
+            return
+
+        # loop over animals and keep only complete data (i.e. 6 pts)
+        for k in animal_ids:
+
+            # find nans and delete any frame that is missing even a single value for that animal
+            if remove_nans:
+
+                idx = np.where(np.isnan(d3[:,k]))
+                ids, counts = np.unique(idx[0], return_counts=True)
+#                     print (k, "Coutns: ", counts.shape, counts)
+#                     print (k, "ids: ", ids.shape, " idx: ", idx[0].shape, idx[0])
+
+                idx_all = np.arange(d3.shape[0])
+                idx_good = np.delete(idx_all, ids)
+
+                temp = d3[idx_good,k]
+
+                features_array[k].append(temp)
+            else:
+                features_array[k].append(d3[:,k])
+
+
+    # return stacked feature array
+    #self.features_array = features_array
+
+    print (" DATA SIZES: ")
+    print (" female [n_samples, n_featres, xy]: ", np.vstack(features_array[0]).shape)
+    print (" male:                              ", np.vstack(features_array[1]).shape)
+    print (" pup1:                              ", np.vstack(features_array[2]).shape)
+    print (" pup2:                              ", np.vstack(features_array[3]).shape)
+
+    return features_array
+
+#
+def centre_and_align1_pairwise(fname,
+                               feature_ids,
+                               f1,
+                               f2):
+
+    ''' Function generates 2 point fixed body axis arrays;
+        Input: median filtered and outlier triaged data
+        Output: 2 point fixed body axis data (0-centred);
+                angle of rotation
+                0-centre translation
+
+    '''
+    fname2 = fname.replace('.npy','_median_filtered_outliers.npy')
+
+    fname_out = fname2.replace('.npy','_centre_aligned_'+str(f1)+"_"+str(f2)+'.npz')
+
+    if os.path.exists(fname_out)==False:
+
+        data = np.load(fname2)
+
+        #
+        centre_pt = f1        # centre-point fix the data
+        rotation_pt = f2      # rotate it to 2nd feature;  e.g. nose centred (1st feature)
+                              # and rotated to head (i.e. 2nd feature)
+
+        features_full = np.zeros((data.shape[0],data.shape[1],feature_ids.shape[0],2),
+                                      'float32')+np.nan
+        angles = np.zeros((data.shape[0], data.shape[1]),'float32')+np.nan
+        translations = np.zeros((data.shape[0], data.shape[1], 2),'float32')+np.nan
+
+        for f in range(0,data.shape[0],1):
+
+            # loop over each animal
+            for k in range(data.shape[1]):
+
+                x = data[f,k,feature_ids,0]
+                y = data[f,k,feature_ids,1]
+
+                idx = np.where(np.isnan(x))[0]
+                if idx.shape[0]==0:
+
+                    # make 2D vector stack from non
+                    locs = np.vstack((x,y)).T
+
+                    # centre and align data
+                    locs_pca, angle, translation_pt = centre_and_align2_pairwise(locs,
+                                                          centre_pt,
+                                                          rotation_pt)
+
+                    #if locs_pca is not None:
+                    idx = np.where(np.isnan(locs_pca))[0]
+
+                    if idx.shape[0]>0:
+                        continue
+
+                    features_full[f,k] = locs_pca
+                    angles[f,k] = angle
+                    translations[f,k] = translation_pt
+
+        #
+        np.savez(fname_out,
+                 features_full = features_full,
+                 angles = angles,
+                 translations = translations,
+                 )
+
+
+def centre_and_align2_pairwise(data, centre_pt, rotation_pt):
+
+    # centre the data on the nose
+    # data[:,0] -= data[centre_pt,0]
+    # data[:,1] -= data[centre_pt,1]
+
+    data -= data[centre_pt]
+
+
+    # get angle between +x axis and head location (i.e. 2nd position)
+    # 2ND POSITION ALIGNMENT
+    angle = -np.arctan2(*data[rotation_pt].T[::-1])-np.pi/2
+
+    # get rotation
+    rotmat = np.array([[np.cos(angle), -np.sin(angle)],
+                       [np.sin(angle),  np.cos(angle)]])
+
+    # Apply rotation to each row of m
+    m2 = (rotmat @ data.T).T
+
+    # return rotated body, angle and translation pt
+    return m2, angle, data[centre_pt]
+
+
+def convert_slp(fname):
+
+    load_slp_convert_to_h5(fname)
+
+    slp_to_npy(fname)
+
+def load_slp_convert_to_h5(fname):
+
+
+    fname_h5 = fname.replace('.slp',".h5")
+    if os.path.exists(fname_h5)==False:
+        #
+        slp = sleap.load_file(fname)
+
+        #
+        slp.export(fname_h5)
+
+def slp_to_npy(fname):
+
+    fname_h5 = fname.replace('.slp',".h5")
+    fname_npy = fname.replace('.slp','.npy')
+
+    if os.path.exists(fname_npy)==False:
+
+        #
+        hf = h5py.File(fname_h5, 'r')
+
+        keys = hf.keys()
+        group2 = hf.get('tracks')
+        print ("group2: ", group2)
+        tracks = []
+        for k in range(len(group2)):
+            tracks.append(group2[k])
+
+        tracks = np.array(tracks).transpose(3, 0, 2, 1)
+
+        #
+        #fname_npy = fname_slp[:-4] + ".npy"
+        np.save(fname_npy, tracks)
+
+
+
+def reject_outliers1(fname, feature_ids, max_dist):
+
+    fname2 = fname.replace('.npy','_median_filtered.npy')
+
+    fname_out = fname2.replace('.npy','_outliers.npy')
+
+    if os.path.exists(fname_out)==False:
+
+        data = np.load(fname2)
+        for f in range(0,data.shape[0],1):
+
+            for k in range(data.shape[1]):
+                #
+                x = data[f,k,feature_ids,0]
+                y = data[f,k,feature_ids,1]
+
+                x, y = reject_outliers2(x,y, max_dist)
+
+                data[f,k,feature_ids,0] = x
+                data[f,k,feature_ids,1] = y
+
+        np.save(fname_out, data)
+
+def reject_outliers2(x,y,
+                    max_dist_pairwise,
+                    max_dist_all=100):  # number of deviations away
+
+    ''' Function returns indexes for which [x,y] array points are close to at least 2 other points
+
+        Goal 1: to generate very clean data which has 6 body features well connected for downstream analysis and imputation
+
+        Goal 2: to remove outliers and leave small clusters of feautres only
+
+    '''
+
+    # method 2: explicitly reject points that are > max distance from nearest 2 points
+    temp = np.vstack((x,y))
+    dists = scipy.spatial.distance.cdist(temp.T, temp.T)
+
+    # first check points inside the array to ensure they have 2 close neighbours
+    # if they don't, remove them so other points can't be connected to them.
+    idx_far = []
+    for k in range(1,temp.shape[1]-1,1):
+        #idx = np.where(dists[k]<=max_dist_pairwise)[0]
+        temp = dists[k]
+        if np.abs(temp[k]-temp[k-1])>max_dist_pairwise or np.abs(temp[k]-temp[k+1])>max_dist_pairwise:
+            idx_far.append(k)
+            dists[:,k]= 1E3
+
+    # check start and end points to ensure they have nearby val
+    if np.abs(dists[0,1])>max_dist_pairwise:
+        idx_far.append(0)
+        #print (dists[0], 'excluded ', 0)
+
+    if np.abs(dists[dists.shape[1]-1,dists.shape[1]-2])>max_dist_pairwise:
+        idx_far.append(dists.shape[1]-1)
+        #print (dists[0], 'excluded ', dists.shape[1]-1)
+
+
+    x[idx_far] = np.nan
+    y[idx_far] = np.nan
+
+    return x, y
+
+
+
 #
 class Impute():
 
-    def __init__(self, root_dir):
+    def __init__(self, cb):
 
-        self.root_dir = root_dir
+        #
+        self.n_cores = 8
+
+        #
+        self.root_dir = cb.root_dir
+
+        #
+        self.cb = cb
+
+        #
+        self.model_type_names = ["BayesianRidge",
+                                 "DecisionTreeRegressor",
+                                 "ExtraTreesRegressor",
+                                 "KNeighborsRegressor"]
+
+        self.estimators = [BayesianRidge(),
+                DecisionTreeRegressor(max_features='sqrt', random_state=0),
+                ExtraTreesRegressor(n_estimators=10, random_state=0),
+                KNeighborsRegressor(n_neighbors=15)]
+
+        #
+        self.feature_ids = cb.feature_ids
+
+        #
+        self.March16_file_order = cb.March16_file_order
+
+        #
+        self.animal_ids = cb.animal_ids
 
     #
     def evaluate_imputation_error(self,features_array, animal_id, res, idx_train, idx_test):
@@ -389,6 +706,130 @@ class Impute():
         plt.ylabel(" pixel error")
         plt.ylim(0,50)
 
+    #
+    def predict_novel_data(self):
+
+        #
+        pairs = []
+        for f1 in range(self.feature_ids.shape[0]):
+            for f2 in range(f1+1, self.feature_ids.shape[0],1):
+                pairs.append([f1,f2])
+
+        #
+        if self.parallel:
+            parmap.map(predict_novel_data1, pairs,
+                        self.March16_file_order,
+                        self.root_dir,
+                        self.model_type_names[self.model_type],
+                        self.animal_ids,
+                        self.animals_selected,
+                        pm_processes=self.n_cores)
+        #
+        else:
+            for pair in pairs:
+                print (pair)
+                predict_novel_data1(pair,
+                                    self.March16_file_order,
+                                    self.root_dir,
+                                    self.model_type_names[self.model_type],
+                                    self.animal_ids,
+                                    self.animals_selected
+                                    )
+        print ("DONE")
+
+    #
+    def predict_imputation_ground_truth_all_pairs(self,
+                                                 max_n_drops = 3):
+
+        # load actual data and impute missing locations
+        if self.generate_random_drops==False:
+            print (" TO DO: load actual data")
+
+            self.predict_novel_data()
+
+        # load ground truth data and generate random drop outs
+        else:
+            # print ("LOADING head-egocentric clean data")
+            fname_out = os.path.join(self.root_dir,'temp_f1f2.npy')
+            if os.path.exists(fname_out)==False:
+                self.cb.load_processed_data(f1=0, f2=1, data_type=0, remove_nans=True)
+
+                np.save(fname_out, self.cb.features_array)
+
+                # select some random drops for each
+                temp = np.vstack(self.cb.features_array[self.animal_id])
+                drops = np.zeros((temp.shape[0], 3), 'int32')
+                for k in range(drops.shape[0]):
+                    drops[k] = np.random.choice(np.arange(6),3, replace=False)
+
+                # drops = np.vstack(drops)
+                #print (drops.shape, drops)
+
+                np.save(fname_out.replace('.npy','_drops.npy'),
+                        drops)
+            else:
+                #
+                self.cb.features_array = np.load(fname_out, allow_pickle=True)
+                drops = np.load(fname_out.replace('.npy','_drops.npy'), allow_pickle=True)
+
+
+        if self.parallel:
+
+            pairs = []
+            for f1 in range(self.feature_ids.shape[0]):
+                for f2 in range(f1+1, self.feature_ids.shape[0],1):
+                    pairs.append([f1,f2])
+
+            #
+            parmap.map(evaluate_errors_stand_alone, pairs,
+                        drops,
+                        self.root_dir,
+                        self.model_type_names[self.model_type],
+                        self.March16_file_order,
+                        self.animal_ids,
+                        self.animals_selected,
+                        pm_processes=8)
+        else:
+            for f1 in range(6):
+                for f2 in range(f1+1, 6, 1):
+                    pair = np.array([f1,f2])
+                    evaluate_errors_stand_alone(pair,
+                                                drops,
+                                                self.root_dir,
+                                                self.model_type_names[self.model_type],
+                                                self.March16_file_order,
+                                                self.animal_ids,
+                                                self.animals_selected)
+
+
+    def evaluate_res_error(self):
+        # imputed = self.res #np.loadtxt('/home/cat/data_imputed.tsv')
+        # gt = np.loadtxt('/home/cat/feats_ground_truth.tsv')
+
+        print ("Self res: ", self.res.shape)
+        print ("gt: ", self.gt.shape)
+
+        # comptue distances
+        diff = np.float32(np.abs(self.gt-self.res))
+
+        # initialize error lists to track missing data
+        errors = []
+        for k in range(diff.shape[1]):
+            errors.append([])
+
+        # loop over frames
+        for k in range(diff.shape[0]):
+            # loop over features
+            for p in range(diff.shape[1]):
+                temp = diff[k,p]
+                tdiff = np.linalg.norm(temp)
+                if tdiff>0:
+                    errors[p].append(tdiff)
+
+        return errors
+
+
+
 
     #
     def predict_imputation_ground_truth(self,
@@ -396,7 +837,9 @@ class Impute():
                                         idx_test=None,
                                         n_drops = 3):
 
-        '''  Function used to test the prediction between the ground truth complete body axis and dropout data
+        ''' OLD VERSION NOT USED ANYMORE
+
+            Function used to test the prediction between the ground truth complete body axis and dropout data
 
             Need to set the 'remove_nans' flag about to True to get clean model data
 
@@ -687,60 +1130,119 @@ class Impute():
 
         return res_ave, all_locs, idxc
 
+    def gen_imputation_multi_models(pairs,
+                                    root_dir,
+                                    model_type_name,
+                                    animal_ids,
+
+                                    ):
+        f1 = pairs[0]
+        f2 = pairs[1]
 
         #
-    def generate_imputation_models(self):
+        fname_model = os.path.join(root_dir, model_type_name+
+                                           "_"+str(f1)+"_"+str(f2))
+
+        # load filtered + outliner triaged data with Nans removed
+        self.cb.load_processed_data(f1, f2,
+                                    data_type=0,
+                                    remove_nans=True)
+
+        #
+        for a in range(self.animal_ids.shape[0]):
+
+            # fname_out = fname_features.replace('.npz','_animalID'+str(a)+"_"+
+            #                                   self.model_type_names[self.model_type]+".pkl")
+            fname_out = fname_model+'_animalID_'+str(a)+".pkl"
+
+            if os.path.exists(fname_out)==False:
+                temp = np.vstack(self.cb.features_array[a])
+                print ("Raw Data: ", temp.shape)
+
+                X_train = temp.reshape(temp.shape[0],-1)
+                print ("X_train: ", X_train.shape)
+
+                print ("fitting...animal id: ", a, "  body centre: ", f1, "  rotation pt: ", f2)
+                imp = IterativeImputer(max_iter=10,
+                                       #n_nearest_features = 2,
+                                       #sample_posterior = True,
+                                       estimator=self.estimators[self.model_type],
+                                       random_state=0)
+                imp.fit(X_train)
+                print ("done")
+
+                #
+                with open(fname_out, "wb") as f:
+                    pickle.dump(imp, f)
+        #
 
 
-        from sklearn.linear_model import BayesianRidge
-        from sklearn.tree import DecisionTreeRegressor
-        from sklearn.ensemble import ExtraTreesRegressor
-        from sklearn.neighbors import KNeighborsRegressor
 
-        self.model_type_names = ["BayesianRidge",
-                                 "DecisionTreeRegressor",
-                                 "ExtraTreesRegressor",
-                                 "KNeighborsRegressor"]
+    def generate_imputation_models_all_pairs(self):
 
-        for animal_id in self.animal_ids:
+        # make a model for every animal and every pair-wise
+        #feature_ids = np.arange(6)
 
-            #
-            temp = np.vstack(self.cb.features_array[animal_id])
-            print ("Raw Data: ", temp.shape)
+        pairs = []
+        for f1 in range(self.feature_ids.shape[0]):
+            for f2 in range(f1+1, self.feature_ids.shape[0],1):
+                pairs.append([f1,f2])
 
-            #
-            body_centres = [self.body_centre]
+        if self.parallel:
+            parmap.map(models_parallel,
+                       pairs,
+                       self.March16_file_order,
+                       self.model_type_names[self.model_type],
+                       self.root_dir,
+                       self.animal_ids,
+                       self.estimators[self.model_type],
+                       data_type=0,
+                       pm_processes= 8)
 
-            for k in body_centres:
-
-                fname_out = self.root_dir+"model_type"+str(self.model_type)+"_imputation_animal_id"+str(animal_id)+"_body_centre"+str(k)+".pckl"
-                if os.path.exists(fname_out)==False:
-
-                    # centre the data on the particular feature being trained on
-                    # TODO: try further aligning to 2 points; might give more stable results...
-                    temp = temp-temp[:,k][:,None]
-
-                    X_train = temp.reshape(temp.shape[0],-1)
-                    print ("X_train: ", X_train.shape)
-
-                    #
-                    estimators = [BayesianRidge(),
-                    DecisionTreeRegressor(max_features='sqrt', random_state=0),
-                    ExtraTreesRegressor(n_estimators=10, random_state=0),
-                    KNeighborsRegressor(n_neighbors=15)]
-
-                    print ("fitting...animal id: ", animal_id, "  body centre: ", k)
-                    imp = IterativeImputer(max_iter=10,
-                                           #n_nearest_features = 2,
-                                           #sample_posterior = True,
-                                           estimator=estimators[self.model_type],
-                                           random_state=0)
-                    imp.fit(X_train)
-                    print ("done")
-
-                    #
-                    with open(fname_out, "wb") as f:
-                        pickle.dump(imp, f)
+    #
+    #
+    # def generate_imputation_models(self):
+    #
+    #     #
+    #     for animal_id in self.animal_ids:
+    #
+    #         #
+    #         temp = np.vstack(self.cb.features_array[animal_id])
+    #         print ("Raw Data: ", temp.shape)
+    #
+    #         #
+    #         body_centres = [self.body_centre]
+    #
+    #         for k in body_centres:
+    #
+    #             fname_out = self.root_dir+"model_type"+str(self.model_type)+"_imputation_animal_id"+str(animal_id)+"_body_centre"+str(k)+".pckl"
+    #             if os.path.exists(fname_out)==False:
+    #
+    #                 # centre the data on the particular feature being trained on
+    #                 # TODO: try further aligning to 2 points; might give more stable results...
+    #                 temp = temp-temp[:,k][:,None]
+    #
+    #                 X_train = temp.reshape(temp.shape[0],-1)
+    #                 print ("X_train: ", X_train.shape)
+    #
+    #                 #
+    #                 estimators = [BayesianRidge(),
+    #                 DecisionTreeRegressor(max_features='sqrt', random_state=0),
+    #                 ExtraTreesRegressor(n_estimators=10, random_state=0),
+    #                 KNeighborsRegressor(n_neighbors=15)]
+    #
+    #                 print ("fitting...animal id: ", animal_id, "  body centre: ", k)
+    #                 imp = IterativeImputer(max_iter=10,
+    #                                        #n_nearest_features = 2,
+    #                                        #sample_posterior = True,
+    #                                        estimator=estimators[self.model_type],
+    #                                        random_state=0)
+    #                 imp.fit(X_train)
+    #                 print ("done")
+    #
+    #                 #
+    #                 with open(fname_out, "wb") as f:
+    #                     pickle.dump(imp, f)
 
 
     def make_vae_data(self):
@@ -1098,6 +1600,344 @@ def filter_data2(x, width=25):
         x[idx] = x[idx-1]
 
 
-    x = scipy.ndimage.median_filter(x, width=width)
+    x = scipy.ndimage.median_filter(x, size=width)
 
     return x
+
+
+
+def models_parallel(pairs,
+                    March16_file_order,
+                    model_name,
+                    root_dir,
+                    animal_ids,
+                    estimator,
+                    data_type=0):
+
+    #
+    f1 = pairs[0]
+    f2 = pairs[1]
+
+    #
+    fname_model = os.path.join(root_dir, model_name+"_"+str(f1)+"_"+str(f2))
+
+    # load filtered + outliner triaged data with Nans removed
+    features_array = load_processed_data_stand_alone(f1, f2, March16_file_order,
+                                                    root_dir,
+                                                    animal_ids,
+                                                    data_type=data_type,
+                                                    remove_nans=True)
+
+    # loop over animals
+    for a in range(animal_ids.shape[0]):
+
+        # fname_out = fname_features.replace('.npz','_animalID'+str(a)+"_"+
+        #                                   self.model_type_names[self.model_type]+".pkl")
+        fname_out = fname_model+'_animalID_'+str(a)+".pkl"
+
+        if os.path.exists(fname_out)==False:
+            temp = np.vstack(features_array[a])
+            print ("Raw Data: ", temp.shape)
+
+            X_train = temp.reshape(temp.shape[0],-1)
+            print ("X_train: ", X_train.shape)
+
+            print ("fitting...animal id: ", a, "  body centre: ", f1, "  rotation pt: ", f2)
+            imp = IterativeImputer(max_iter=10,
+                                   #n_nearest_features = 2,
+                                   # sample_posterior = True,
+                                   estimator=estimator,
+                                   random_state=0)
+            imp.fit(X_train)
+            print ("done")
+
+            #
+            with open(fname_out, "wb") as f:
+                pickle.dump(imp, f)
+
+
+
+
+            for f1 in range(self.feature_ids.shape[0]):
+                for f2 in range(f1+1,self.feature_ids.shape[0],1):
+                    # self.cb.load_processed_data(f1=f1, f2=f2,
+                    #                             data_type=0,
+                    #                             remove_nans=True)
+
+                    # find which frame drops contain f1 and f2
+                    idx1 = np.where(drops==f1)[0]
+                    idx2 = np.where(drops==f2)[0]
+                    idx3 = np.intersect1d(idx1, idx2)
+                    print (idx1.shape, idx2.shape, " intersection f1 f2: ", idx3.shape)
+
+                    # load specific egocentric data
+                    self.cb.load_processed_data(f1=f1, f2=f2,
+                                                data_type=0,
+                                                remove_nans=True)
+
+                    # drop out specific data
+                    self.gt = np.vstack(self.cb.features_array[self.animal_id])
+                    #print ("self.gt: ", self.gt.shape)
+
+                    # initialize test arrays
+                    self.test = np.zeros((self.gt.shape),'float32')+np.nan
+                    for k in range(idx3.shape[0]):
+                        # print (self.gt[k].shape, self.gt[k][drops[idx3[k]]].shape)
+                        self.test[k,drops[idx3[k]]] = self.gt[k,drops[idx3[k]]]
+
+                    #
+                    print ("self.test = ", self.test.shape)
+
+                    # reshape data
+                    X_test = self.test.reshape(self.test.shape[0],-1)
+                    #print ("X test: ", X_test.shape)
+
+                    # load f1 - f2 model
+                    fname_in = os.path.join(self.root_dir,
+                                self.model_type_names[self.model_type]+"_"+str(f1)+"_"+str(f2)+
+                                "_animalID_"+str(self.animal_id)+".pkl")
+                    print ("  loading model...")
+                    with open(fname_in, "rb") as f:
+                        model = pickle.load(f)
+
+                    # impute missing data in egocentric coordinates
+                    print ("  imputing missing data...")
+                    self.res = model.transform(X_test).reshape(-1,6,2)
+
+                    # compute error
+                    print ("  computing error ...")
+                    error = self.evaluate_res_error()
+                    errors.append(error)
+                    print ('')
+
+            self.errors = errors
+
+            print ("Saving errrors....")
+            np.save('/home/cat/errors_'+self.model_type_names[self.model_type]+'.npy',
+                    self.errors)
+
+
+def predict_novel_data1(pairs,
+                        March16_file_order,
+                        root_dir,
+                        model_type_name,
+                        animal_ids,
+                        animals_selected
+                        ):
+    f1 = pairs[0]
+    f2 = pairs[1]
+
+    # load specific egocentric data
+    features_array = load_processed_data_stand_alone(f1, f2,
+                                                     March16_file_order,
+                                                     root_dir,
+                                                     animal_ids,
+                                                     data_type=0,
+                                                     remove_nans=False)
+
+    # drop out specific data
+    for animal_id in animals_selected:
+        fname_out = os.path.join(root_dir,"prediction_"+model_type_name+"_animalID_"+str(animal_id)+
+                         "_"+str(f1)+"_"+str(f2)+'.npy')
+
+        #
+        if os.path.exists(fname_out)==False:
+            gt = np.vstack(features_array[animal_id])
+
+            # find which frames have both f1 and f2 present
+            if False:
+                idx1_nan = np.where(np.isnan(gt)==False)
+                print ("idx1_nan: ", idx1_nan)
+                print ("idx-nan: ", idx1_nan[0].shape)
+                drops = np.zeros((gt.shape),'float32')+np.nan
+
+                idx1 = np.where(drops==f1)[0]
+                idx2 = np.where(drops==f2)[0]
+                idx3 = np.intersect1d(idx1, idx2)
+
+
+
+                # initialize test arrays
+                test = np.zeros((gt.shape),'float32')+np.nan
+                for k in range(idx3.shape[0]):
+                    # print (self.gt[k].shape, self.gt[k][drops[idx3[k]]].shape)
+                    test[k,drops[idx3[k]]] = gt[k,drops[idx3[k]]]
+            else:
+                X_test = gt.reshape(gt.shape[0],-1)
+
+            print ("X_test: ", X_test.shape)
+
+            # load f1 - f2 model
+            fname_in = os.path.join(root_dir,
+                        model_type_name+"_"+str(f1)+"_"+str(f2)+
+                        "_animalID_"+str(animal_id)+".pkl")
+
+            # print ("  loading model...")
+            with open(fname_in, "rb") as f:
+                model = pickle.load(f)
+
+            # impute missing data in egocentric coordinates
+            # print ("  imputing missing data...")
+            res = model.transform(X_test).reshape(-1,6,2)
+
+            #
+            np.save(fname_out,
+                    res)
+
+
+
+def evaluate_errors_stand_alone(pairs,
+                                drops,
+                                root_dir,
+                                model_type_name,
+                                March16_file_order,
+                                animal_ids,
+                                animals_selected,
+                                ):
+
+    f1 = pairs[0]
+    f2 = pairs[1]
+
+    # find which frame drops contain f1 and f2
+    idx1 = np.where(drops==f1)[0]
+    idx2 = np.where(drops==f2)[0]
+    idx3 = np.intersect1d(idx1, idx2)
+    # print (idx1.shape, idx2.shape, " intersection f1 f2: ", idx3.shape)
+
+    # load specific egocentric data
+    features_array = load_processed_data_stand_alone(f1, f2,
+                                                     March16_file_order,
+                                                     root_dir,
+                                                     animal_ids,
+                                                     data_type=0,
+                                                     remove_nans=True)
+
+    # drop out specific data
+    for animal_id in animals_selected:
+        fname_out = os.path.join(root_dir,"errors_"+model_type_name+"_animalID_"+str(animal_id)+
+                         "_"+str(f1)+"_"+str(f2)+'.npy')
+
+        #
+        if os.path.exists(fname_out)==False:
+            gt = np.vstack(features_array[animal_id])
+            #print ("self.gt: ", self.gt.shape)
+
+            # initialize test arrays
+            test = np.zeros((gt.shape),'float32')+np.nan
+            for k in range(idx3.shape[0]):
+                # print (self.gt[k].shape, self.gt[k][drops[idx3[k]]].shape)
+                test[k,drops[idx3[k]]] = gt[k,drops[idx3[k]]]
+
+            #
+            # print ("test = ", test.shape)
+
+            # reshape data
+            X_test = test.reshape(test.shape[0],-1)
+
+            # load f1 - f2 model
+            fname_in = os.path.join(root_dir,
+                        model_type_name+"_"+str(f1)+"_"+str(f2)+
+                        "_animalID_"+str(animal_id)+".pkl")
+
+            # print ("  loading model...")
+            with open(fname_in, "rb") as f:
+                model = pickle.load(f)
+
+            # impute missing data in egocentric coordinates
+            # print ("  imputing missing data...")
+            res = model.transform(X_test).reshape(-1,6,2)
+
+            # compute error
+            # print ("  computing error ...")
+            error = evaluate_res_error_stand_alone(gt, res)
+
+            # print ("Saving errrors....")
+
+
+            np.save(fname_out,
+                    error)
+
+
+def evaluate_res_error_stand_alone(res, gt):
+    # imputed = self.res #np.loadtxt('/home/cat/data_imputed.tsv')
+    # gt = np.loadtxt('/home/cat/feats_ground_truth.tsv')
+
+    print ("res: ", res.shape)
+    print ("gt: ", gt.shape)
+
+    # comptue distances
+    diff = np.float32(np.abs(gt-res))
+
+    # initialize error lists to track missing data
+    errors = []
+    for k in range(diff.shape[1]):
+        errors.append([])
+
+    # loop over frames
+    for k in range(diff.shape[0]):
+        # loop over features
+        for p in range(diff.shape[1]):
+            temp = diff[k,p]
+            tdiff = np.linalg.norm(temp)
+            if tdiff>0:
+                errors[p].append(tdiff)
+
+    return errors
+
+
+
+
+def plot_errors(I):
+    ctr=0
+    sns.reset_defaults()
+
+    fig=plt.figure()
+    for f1 in range(6):
+        for f2 in range(f1+1, 6, 1):
+            fname = os.path.join(I.root_dir,'errors_'+I.model_type_names[I.model_type]+
+                                 "_animalID_"+str(I.animals_selected[0])+"_"+str(f1)+"_"+str(f2)+".npy")
+            error = np.load(fname,allow_pickle=True)
+            error_f1f2 = np.array(error)
+
+            #
+            ax = plt.subplot(5,6,f1*6+f2)
+            t =[]
+            for k in range(len(error_f1f2)):
+                temp = error_f1f2[k]
+                pad = np.zeros(250000-len(error_f1f2[k]),'float32')+np.nan
+                temp = np.concatenate((temp, pad))
+
+                idx = np.where(temp<1E-8)[0]
+                temp[idx]=np.nan
+                t.append(temp)
+
+            errors = np.float64(t).T
+
+            columns = ['nose','spine1','spine2', 'spine3', 'spine4', 'spine5']
+            df = pd.DataFrame(errors, columns = columns)
+
+
+            p = sns.violinplot(data=df) #x=df['spine2'])
+            _, ylabels = plt.yticks()
+            _, xlabels = plt.xticks()
+
+            p.set_xticklabels(xlabels, size=10, rotation=45)
+            #p.set_yticklabels(ylabels, size=13)
+
+
+            plt.ylim(0,50)
+            plt.title(str(f1)+" "+str(f2),pad=.8)
+            if f1==0 and f2==1:
+                pass
+            else:
+                plt.xticks([])
+                plt.yticks([])
+
+            ctr+=1
+            print (ctr,)
+            print ('')
+
+            #break
+        #break
+    plt.show()
+
