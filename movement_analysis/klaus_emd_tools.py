@@ -1,6 +1,8 @@
 
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+import math
+
 #
 import numpy as np
 import os
@@ -31,24 +33,61 @@ import scipy.ndimage
 #####################################################
 #####################################################
 #####################################################
-def median_filter(data, max_gap, filter_width):
+# def median_filter(data, max_gap, filter_width):
+#
+#     for f in trange(data.shape[1]):
+#         for l in range(data.shape[2]):
+#             x = data[:,f,l]
+#             for k in range(1000):
+#                 idx = np.where(np.isnan(x))[0]
+#                 if idx.shape[0]==0:
+#                     break
+#
+#                 if idx[0]==0:
+#                     idx=idx[1:]
+#                 x[idx] = x[idx-1]
+#
+#             x = scipy.ndimage.median_filter(x, size=filter_width)
+#             data[:,f,l]= x
+#
+#     return data
 
-    for f in trange(data.shape[1]):
-        for l in range(data.shape[2]):
-            x = data[:,f,l]
-            for k in range(1000):
-                idx = np.where(np.isnan(x))[0]
-                if idx.shape[0]==0:
-                    break
+def get_durations_single_frame(data, min_duration = 5):
 
-                if idx[0]==0:
-                    idx=idx[1:]
-                x[idx] = x[idx-1]
+    # find starts and ends from the non-nan Indexes
+    starts = []
+    ends = []
+    starts.append(data[0])
+    for d in range(1,data.shape[0],1):
+        if (data[d]-data[d-1])>1:
+            ends.append(data[d-1]+1)
+            starts.append(data[d])
 
-            x = scipy.ndimage.median_filter(x, size=filter_width)
-            data[:,f,l]= x
+    #
+    starts = np.array(starts)
+    ends = np.array(ends)
+    if starts.shape[0]==ends.shape[0]+1:
+        starts=starts[:-1]
 
-    return data
+    durations = (ends - starts)
+
+    # loop over the
+    vectors = []
+    for k in range(durations.shape[0]):
+        temp = durations[k]
+        if temp>=min_duration:
+
+            # # unroll and grab all instances
+            # for p in range(0,temp-min_duration,1):
+            #     dd.append(min_duration)
+
+                #print (starts[k]+p, ends[k]+p)
+            vectors.append([starts[k], ends[k]])
+
+    vectors = np.vstack(vectors)
+
+    return vectors
+
 
 #
 def get_durations(data, ctr, animal_id, min_duration = 25, plotting = False):
@@ -58,9 +97,9 @@ def get_durations(data, ctr, animal_id, min_duration = 25, plotting = False):
 
     #
     root_dir = '/media/cat/1TB/dan/cohort1/slp/'
-    d = np.load(root_dir + '/animalID_'+
-                str(animal_id)+
-                '_alldata_imputed.npy')
+    # d = np.load(root_dir + '/animalID_'+
+    #             str(animal_id)+
+    #             '_alldata_imputed.npy')
 
     #
     starts = []
@@ -84,6 +123,7 @@ def get_durations(data, ctr, animal_id, min_duration = 25, plotting = False):
     for k in range(durations.shape[0]):
         temp = durations[k]
         if temp>=min_duration:
+            # unroll and grab all instances
             for p in range(0,temp-min_duration,1):
                 dd.append(min_duration)
 
@@ -91,7 +131,6 @@ def get_durations(data, ctr, animal_id, min_duration = 25, plotting = False):
                 vectors.append([starts[k]+p, starts[k]+min_duration+p])
 
     vectors = np.vstack(vectors)
-
 
     #
     if plotting:
@@ -129,6 +168,10 @@ def get_lengths(animal_id):
                              'alldata_fixed.npz'))
         d = d['frames']
         t = d['times']
+
+
+
+
     except:
         print (" FRAME IDS MISSING , UPGRADE DATAFILES ")
         d = np.load(os.path.join(root_dir, 'slp',
@@ -280,13 +323,14 @@ def centre_and_align2_pairwise(data, centre_pt = 0, rotation_pt = 1):
 
 
 #
-def get_vectors(animal_id, vectors_idx, feature_ids, min_duration):
+def get_vectors(animal_id, vectors_idx, feature_ids):
 
     root_dir = '/media/cat/1TB/dan/cohort1/slp/'
     # d = np.load(root_dir + '/animalID_'+
     #             str(animal_id)+
     #             '_alldata_imputed.npy')
 
+    # THIS IS ALREADY IN MEMORY - SHOULD GRAB IT FROM PREVIOUS FUNCTION
     d = np.load(root_dir + '/animalID_'+str(animal_id)
                 +'_alldata_fixed.npy')
 
@@ -307,8 +351,8 @@ def get_vectors(animal_id, vectors_idx, feature_ids, min_duration):
 
     vecs = np.array(vecs)
 
-    np.save(root_dir+'/animalID_'+str(animal_id)+"_alldata_imputed_featureIDS"+str(feature_ids)+"_nonNan.npy",
-            vecs)
+    # np.save(root_dir+'/animalID_'+str(animal_id)+"_alldata_imputed_featureIDS"+str(feature_ids)+"_nonNan.npy",
+    #         vecs)
 
     return vecs
 
@@ -317,22 +361,22 @@ def get_vectors(animal_id, vectors_idx, feature_ids, min_duration):
 def vectors_to_egocentric(vecs, animal_id,min_duration):
 
     # print ("vecs: ", vecs.shape)
-    root_dir = '/media/cat/1TB/dan/cohort1/slp/'
-    fname_out = root_dir + '/vecs_ego_animalID_'+str(animal_id)+"_duration_"+str(min_duration)+'.npy'
-    if os.path.exists(fname_out)==False:
-        vecs_ego = np.zeros(vecs.shape, 'float32')+np.nan
+    # root_dir = '/media/cat/1TB/dan/cohort1/slp/'
+    # fname_out = root_dir + '/vecs_ego_animalID_'+str(animal_id)+"_single_frame.npy"
+    # if os.path.exists(fname_out)==False:
+    vecs_ego = np.zeros(vecs.shape, 'float32')+np.nan
 
-        #
-        for s in trange(vecs.shape[0],  desc='Getting egocentric vectors', leave=True):
+    #
+    for s in trange(vecs.shape[0],  desc='Getting egocentric vectors', leave=True):
 
-            vec = vecs[s]
-            #print ("vec: ", vec.shape)
-            # centre and align data
-            vecs_ego[s] = centre_and_align2_pairwise(vec)
+        vec = vecs[s]
+        #print ("vec: ", vec.shape)
+        # centre and align data
+        vecs_ego[s] = centre_and_align2_pairwise(vec)
 
-        np.save(fname_out, vecs_ego)
-    else:
-        vecs_ego = np.load(fname_out)
+    #     np.save(fname_out, vecs_ego)
+    # else:
+    #     vecs_ego = np.load(fname_out)
 
     return vecs_ego
 
@@ -479,48 +523,61 @@ def get_angles(vecs, animal_id, min_duration):
 
     return angles
 
-# def get_angles2(vecs, vecs_ego, animal_id, min_duration):
-#     import math
-#     root_dir = '/media/cat/1TB/dan/cohort1/slp/'
-#
-#     fname_out = root_dir + '/angles_ego_animalID_'+str(animal_id)+"_duration_"+str(min_duration)+'.npy'
-#
-#     if os.path.exists(fname_out)==False:
-#         angles = np.zeros((vecs.shape[0],
-#                            vecs.shape[1]),
-#                            'float32')+np.nan
-#         #
-#         for f in trange(vecs.shape[0],  desc='Getting angles', leave=True):
-#
-#             #
-#             temp1 = vecs[f,0]
-#             temp1 = temp1[1] - temp1[0]
-#             angle1 = np.angle(complex(*(temp1)))
-#             for m in range(0,vecs.shape[1],1):
-#
-#                 #
-#                 #
-#                 temp2 = vecs[f,m]
-#                 temp2 = temp2[1] - temp2[0]
-#
-#                 angle = math.atan2(temp1[0]*temp2[1] - temp1[1]*temp2[0],
-#                               temp1[0]*temp2[0] + temp1[1]*temp2[1])
-#
-#                 angles[f,m]=angle
-#
-#         np.save(fname_out, angles)
-#     else:
-#         angles = np.load(fname_out)
-#
-#
-#     return angles
-#
+
+def get_acceleration_persec_single_frame(vecs, animal_id):
+    root_dir = '/media/cat/1TB/dan/cohort1/slp/'
+
+    fps = 25
+    # fname_out = root_dir + '/acceleration_ego_animalID_'+str(animal_id)+"_duration_"+str(min_duration)+'.npz'
+
+    # acc_ap = np.zeros((vecs.shape[0],vecs.shape[1]-2),'float32')
+    # acc_ml = np.zeros((vecs.shape[0],vecs.shape[1]-2),'float32')
+    #
+    # vel_ap = np.zeros((vecs.shape[0],vecs.shape[1]-1),'float32')
+    # vel_ml = np.zeros((vecs.shape[0],vecs.shape[1]-1),'float32')
+
+    acc = []
+    vel = []
+    #if os.path.exists(fname_out)==False:
+    for f in trange(vecs.shape[0], desc='Getting velocity and acceleration'):
+
+        # position
+        vecs_nose = vecs[f][:,0]
+
+        # velocity
+        vel_ap = vecs_nose[1:,0] - vecs_nose[:-1,0]
+        vel_ml = vecs_nose[1:,1] - vecs_nose[:-1,1]
+        vel.append(np.sqrt(vel_ap**2+vel_ml**2)*fps)
+
+        # acceleration
+        acc_ap = vel_ap[1:]-vel_ap[:-1]
+        acc_ml = vel_ml[1:]-vel_ml[:-1]
+        acc.append(np.sqrt(acc_ap**2+acc_ml**2)*fps)
+
+
+
+    #     np.savez(fname_out,
+    #             acc_ap=acc_ap,
+    #             acc_ml=acc_ml)
+    # else:
+    #     d = np.load(fname_out)
+    #     acc_ap = d['acc_ap']
+    #     acc_ml = d['acc_ml']
+
+    # acc = np.sqrt(acc_ml**2+acc_ap**2)*25
+    # vel = np.sqrt(vel_ml**2+vel_ap**2)*25
+    acc = np.array(acc)
+    vel = np.array(vel)
+
+    return acc_ap, acc_ml, acc, vel
+
+
 
 
 def get_acceleration_persec(vecs, animal_id, min_duration):
     root_dir = '/media/cat/1TB/dan/cohort1/slp/'
 
-    fname_out = root_dir + '/acceleration_ego_animalID_'+str(animal_id)+"_duration_"+str(min_duration)+'.npz'
+    # fname_out = root_dir + '/acceleration_ego_animalID_'+str(animal_id)+"_duration_"+str(min_duration)+'.npz'
 
     acc_ap = np.zeros((vecs.shape[0],vecs.shape[1]-2),'float32')
     acc_ml = np.zeros((vecs.shape[0],vecs.shape[1]-2),'float32')
@@ -542,9 +599,9 @@ def get_acceleration_persec(vecs, animal_id, min_duration):
             acc_ap[f]=aa_ap
             acc_ml[f]=aa_ml
 
-        np.savez(fname_out,
-                acc_ap=acc_ap,
-                acc_ml=acc_ml)
+            np.savez(fname_out,
+                    acc_ap=acc_ap,
+                    acc_ml=acc_ml)
     else:
         d = np.load(fname_out)
         acc_ap = d['acc_ap']
@@ -563,22 +620,22 @@ def load_vecs_single_frame(animal_id):
     ##################################
     two, six, headnose = get_lengths(animal_id)
     print ("# of headnose locations: ", headnose.shape)
+    print ("HEADNOSE: ", headnose)
+
     #
     ##################################
     ##################################
     ##################################
-    _,_,vectors_idx = get_durations(headnose, 0,
-                                    animal_id,
-                                    min_duration = min_duration,
-                                    plotting = False)
-    
-    print ("# of segments for single frame analysis ", vectors_idx.shape)
+    vectors_idx = get_durations_single_frame(headnose,
+                                                 min_duration = 5)
+
+    print ("# of segments with min 5 frames for single frame analysis ", vectors_idx.shape)
 
     ##################################
     ##################################
     ##################################
     feature_ids = np.arange(2)
-    vecs = get_vectors(animal_id, vectors_idx, feature_ids, min_duration)
+    vecs = get_vectors(animal_id, vectors_idx, feature_ids)
 
     return vecs
 
@@ -748,6 +805,92 @@ def plot_angle_acceleration_distributions(animal_ids, min_duration):
         print ('')
 
 
+
+
+def discretize_data_single_frame(animal_id,
+                                angles,
+                                acc,
+                                fps,
+                                rad_to_degree,
+                                angles_thresh,
+                                acc_thresh):
+
+    #
+    root_dir = '/media/cat/1TB/dan/cohort1/slp/'
+
+    #
+    fname_out = os.path.join(root_dir, 'all_discretized_'+str(animal_id)+
+                '_single_frame.npz')
+
+    #
+    if os.path.exists(fname_out)==False:
+        print ("DISCRETIZING ")
+
+        ##########################################
+        ##########################################
+        ##########################################
+        angles_discretized = [] # np.zeros(angles.shape, 'float32')+np.nan
+        for k in trange(angles.shape[0]):
+            temp = angles[k]*fps*rad_to_degree
+
+            ang_discretized_seg = np.zeros(temp.shape[0])
+            for a in range(len(angles_thresh)):
+                idx = np.where(np.logical_and(
+                                    temp>=angles_thresh[a][0],
+                                    temp<angles_thresh[a][1],
+                               ))[0]
+                ang_discretized_seg[idx] = a
+
+            angles_discretized.append(ang_discretized_seg)
+        angles_discretized = np.array(angles_discretized)
+
+        ##########################################
+        ##########################################
+        ##########################################
+        # discretize accelaration
+        acc_discretized = []
+        for k in trange(acc.shape[0]):
+            temp = acc[k]
+            acc_discretized_seg = np.zeros(temp.shape[0])
+            for a in range(len(acc_thresh)):
+                idx = np.where(np.logical_and(
+                                    temp>=acc_thresh[a][0],
+                                    temp<acc_thresh[a][1],
+                               ))[0]
+
+                acc_discretized_seg[idx]=a
+            acc_discretized.append(acc_discretized_seg)
+        acc_discretized = np.array(acc_discretized)
+
+        ##########################################
+        ##########################################
+        #########################################
+        all_discretized = []
+        for k in range(angles_discretized.shape[0]):
+            all_discretized.append(np.hstack((angles_discretized[k][2:], acc_discretized[k])))
+
+        all_discretized=np.array(all_discretized)
+
+        ##########################################
+        ##########################################
+        #########################################
+        np.savez(fname_out,
+                all_discretized = all_discretized,
+                angles_discretized = angles_discretized,
+                acc_discretized = acc_discretized)
+
+
+    else:
+        data = np.load(fname_out, allow_pickle=True)
+
+        all_discretized=data['all_discretized']
+        angles_discretized=data['angles_discretized']
+        acc_discretized=data['acc_discretized']
+
+
+    return all_discretized, angles_discretized, acc_discretized
+
+
 def discretize_data(animal_id, min_duration,
                     angles, acc, fps,
                     rad_to_degree, angles_thresh, acc_thresh):
@@ -810,11 +953,34 @@ def discretize_data(animal_id, min_duration,
     return all_discretized, angles_discretized, acc_discretized
 
 def median_filter(data, filter_width):
-
+    #print ("smoothing vector: ", data.shape)
     for k in range(data.shape[0]):
         data[k] = scipy.ndimage.median_filter(data[k], size=filter_width)
 
     return data
+
+
+def smooth_vecs_ego_single_frame(vecs_ego, animal_id, root_dir, window = 5):
+
+    #
+    fname_out = os.path.join(root_dir,'animalID_'+str(animal_id)+
+                             '_vecs_smooth_single_animal.npy')
+    if os.path.exists(fname_out)==False:
+        vecs_smooth = []
+        for k in trange(vecs_ego.shape[0], desc='smoothing vecs'):
+            temp = np.zeros(vecs_ego[k].shape,'float32')
+            for p in range(vecs_ego[k].shape[1]):
+                for r in range(vecs_ego[k].shape[2]):
+                    temp[:,p,r] = median_filter(vecs_ego[k][:,p,r], window)
+            vecs_smooth.append(temp)
+        vecs_smooth = np.array(vecs_smooth)
+
+        np.save(fname_out, vecs_smooth, allow_pickle=True)
+    else:
+        vecs_smooth = np.load(fname_out, allow_pickle=True)
+
+    return vecs_smooth
+
 
 def smooth_vecs_ego(vecs_ego, window = 5):
 
@@ -847,8 +1013,8 @@ def compute_discretized_and_histograms_single_frame(animal_id):
 #                   [75,150],
 #                   [150,1E8]]
 
-    acc_thresh = [[0,5],
-                  [5,40],
+    acc_thresh = [[0,40],
+                  #[20,40],
                   [40,1E8]]
 
     # acc_thresh = [[0,30],
@@ -857,11 +1023,12 @@ def compute_discretized_and_histograms_single_frame(animal_id):
     #
     root_dir = '/media/cat/1TB/dan/cohort1/slp/'
 
-    fname_out = os.path.join(root_dir, 'all_continuous_'+
-                             str(animal_id)+
-                             '_single_frame.npz')
+    #
+    fname_out = os.path.join(root_dir,
+                             'animalID_'+str(animal_id)+
+                             '_single_frame_allData.npz')
 
-
+    #
     if os.path.exists(fname_out)==False:
 
         #
@@ -874,47 +1041,43 @@ def compute_discretized_and_histograms_single_frame(animal_id):
         ##################################
         ##################################
         ##################################
-        vecs = load_vecs(animal_id, min_duration)
-
-        ##################################
-        ##################################
-        ##################################
-        # vecs = None                        # if this is already computed it is not required
-        vecs_ego = vectors_to_egocentric(vecs, animal_id, min_duration)
-        print ('vecs_ego: ', vecs_ego.shape)
-
-        ##################################
-        ##################################
-        ##################################
-        if False:
-            vecs_ego = smooth_vecs_ego(vecs_ego, window=5)
-
-        ##################################
-        ##################################
-        ##################################
-        angles = get_angles3(vecs_ego, animal_id, min_duration)
-
+        vecs = load_vecs_single_frame(animal_id)
 
         ##################################
         ##################################
         ##################################
         if True:
-            angles = smooth_angles(angles)
+            vecs_smooth = smooth_vecs_ego_single_frame(vecs, animal_id,
+                                                       root_dir, window=5)
+            print ("vecs smooth: ", vecs_smooth.shape, " e.g.: ", vecs_smooth[0].shape)
+
+        ##################################
+        ##################################
+        ##################################
+        angles = get_angles_single_frame(vecs_smooth, animal_id)
+        print ("angles: ", angles.shape, " eg.g. ", angles[0])
+
+        ##################################
+        ##################################
+        ##################################
+        if True:
+            angles = smooth_angles(angles)  # same function for single frame
 
         if True:
             angles = compute_angles_cumulative(angles)
+            print ("angles: ", angles.shape, " eg.g. ", angles[0])
 
         ##################################
         ##################################
         ##################################
-        acc_ap, acc_ml, acc = get_acceleration_persec(vecs_ego,
-                                                      animal_id,
-                                                      min_duration)
+        acc_ap, acc_ml, acc, vel = get_acceleration_persec_single_frame(
+                                                    vecs_smooth,
+                                                    animal_id)
 
         ##################################
         ###### MAKE CONTINOUS DATA #######
         ##################################
-        all_continuous = np.hstack((angles[:,2:], acc))
+        # all_continuous = np.hstack((angles[:,2:], acc))
 
         ##################################
         ######### DISCRETIZE #############
@@ -922,83 +1085,52 @@ def compute_discretized_and_histograms_single_frame(animal_id):
 
         (all_discretized,
          angles_discretized,
-         acc_discretized) = discretize_data(animal_id,
-                                            min_duration,
-                                            angles,
-                                            acc,
-                                            fps,
-                                            rad_to_degree,
-                                            angles_thresh,
-                                            acc_thresh)
+         acc_discretized) = discretize_data_single_frame(
+                                                animal_id,
+                                                angles,
+                                                acc,
+                                                fps,
+                                                rad_to_degree,
+                                                angles_thresh,
+                                                acc_thresh)
 
 
         ##################################
         ######### MAKE HISTOGRAMS ########
         ##################################
-
-        ang_hist, acc_hist, all_hist = get_normalized_histograms(
-                                                    angles_discretized,
-                                                    acc_discretized)
         #
-        ang_unique, acc_unique, all_unique = get_unique_angles_accs(
-                                                    ang_hist,
-                                                    acc_hist,
-                                                    all_hist)
-
+        # ang_hist, acc_hist, all_hist = get_normalized_histograms(
+        #                                             angles_discretized,
+        #                                             acc_discretized)
+        # #
+        # ang_unique, acc_unique, all_unique = get_unique_angles_accs(
+        #                                             ang_hist,
+        #                                             acc_hist,
+        #                                             all_hist)
+        #
 
 
         np.savez(fname_out,
-                 all_continuous=all_continuous,
+                 # all_continuous=all_continuous,
                  all_discretized=all_discretized,
-                 all_hist=all_hist,
-                 all_unique=all_unique,
+                 # all_hist=all_hist,
+                 # all_unique=all_unique,
                  angles_thresh=angles_thresh,
                  angles=angles,
                  angles_discretized=angles_discretized,
-                 ang_unique=ang_unique,
-                 ang_hist=ang_hist,
+                 # ang_unique=ang_unique,
+                 # ang_hist=ang_hist,
                  acc_thresh=acc_thresh,
                  acc=acc,
                  acc_ap=acc_ap,
                  acc_ml=acc_ml,
-                 acc_hist=acc_hist,
+                 # acc_hist=acc_hist,
                  acc_discretized=acc_discretized,
-                 acc_unique=acc_unique,
+                 # acc_unique=acc_unique,
+                 vel=vel
                  )
-    else:
-        d = np.load(fname_out, allow_pickle=True)
-        all_continuous=d['all_continuous']
-        all_discretized=d['all_discretized']
-        all_hist=d['all_hist']
-        all_unique=d['all_unique']
-        angles_thresh=d['angles_thresh']
-        angles=d['angles']
-        angles_discretized=d['angles_discretized']
-        ang_unique=d['ang_unique']
-        ang_hist=d['ang_hist']
-        acc_thresh=d['acc_thresh']
-        acc=d['acc']
-        acc_hist=d['acc_hist']
-        acc_discretized=d['acc_discretized']
-        acc_unique=d['acc_unique']
 
-    #
-    print ("... done")
-    return (all_continuous,
-            all_discretized,
-            all_hist,
-            all_unique,
-            angles_thresh,
-            angles,
-            angles_discretized,
-            ang_unique,
-            ang_hist,
-            acc_thresh,
-            acc,
-            acc_hist,
-            acc_discretized,
-            acc_unique)
-
+    print ("... DONE...")
 
 #
 def compute_discretized_and_histograms(animal_id, min_duration):
@@ -1432,50 +1564,95 @@ def compute_angles_cumulative(angles):
 
     return angles
 
+
+def get_angles_single_frame(vecs_ego, animal_id):
+
+    #
+    angles = []
+    #
+    for f in trange(vecs_ego.shape[0],  desc='Getting angles', leave=True):
+
+        # grab the f chunk and t=0 (ie. first frame) xy location
+        temp1 = vecs_ego[f][0]
+
+        # grab xy differences between head and nose at t=0
+        temp1 = temp1[1] - temp1[0]
+        temp_prev = temp1.copy()
+
+        angles_seg = np.zeros(vecs_ego[f].shape[0], dtype=np.float32)
+        # loop over all times in a chunk and find angle relative the first frame
+        for m in range(0,vecs_ego[f].shape[0],1):
+
+            # grab frame
+            temp2 = vecs_ego[f][m]
+
+            # compute xy diff between nose and head
+            temp2 = temp2[1] - temp2[0]
+
+            # compute angle between t=0 frame and current frame
+            angle = math.atan2(temp_prev[0]*temp2[1] - temp_prev[1]*temp2[0],
+                               temp_prev[0]*temp2[0] + temp_prev[1]*temp2[1])
+            angles_seg[m]=angle
+
+            temp_prev = temp2.copy()
+
+        angles.append(angles_seg)
+
+
+    #     np.save(fname_out, angles)
+    # else:
+    #     angles = np.load(fname_out)
+
+    angles = np.array(angles)
+
+    return angles
+
+
+
+
 def get_angles3(vecs_ego, animal_id, min_duration):
-    import math
 
-    root_dir = '/media/cat/1TB/dan/cohort1/slp/'
+    # root_dir = '/media/cat/1TB/dan/cohort1/slp/'
+    #
+    # fname_out = root_dir + '/angles_ego_animalID_'+str(animal_id)+"_duration_"+str(min_duration)+'.npy'
+    #
+    # if os.path.exists(fname_out)==False:
+    angles = np.zeros((vecs_ego.shape[0],
+                       vecs_ego.shape[1]),
+                       'float32') #+np.nan
+    #
+    for f in trange(vecs_ego.shape[0],  desc='Getting angles', leave=True):
 
-    fname_out = root_dir + '/angles_ego_animalID_'+str(animal_id)+"_duration_"+str(min_duration)+'.npy'
+        # grab the f chunk and t=0 (ie. first frame) xy location
+        temp1 = vecs_ego[f,0]
 
-    if os.path.exists(fname_out)==False:
-        angles = np.zeros((vecs_ego.shape[0],
-                           vecs_ego.shape[1]),
-                           'float32') #+np.nan
-        #
-        for f in trange(vecs_ego.shape[0],  desc='Getting angles', leave=True):
+        # grab xy differences between head and nose at t=0
+        temp1 = temp1[1] - temp1[0]
+        temp_prev = temp1.copy()
 
-            # grab the f chunk and t=0 (ie. first frame) xy location
-            temp1 = vecs_ego[f,0]
+        # angle1 = np.angle(complex(*(temp1)))
 
-            # grab xy differences between head and nose at t=0
-            temp1 = temp1[1] - temp1[0]
-            temp_prev = temp1.copy()
+        # loop over all times in a chunk and find angle relative the first frame
+        for m in range(1,vecs_ego.shape[1],1):
 
-            # angle1 = np.angle(complex(*(temp1)))
+            # grab frame
+            temp2 = vecs_ego[f,m]
 
-            # loop over all times in a chunk and find angle relative the first frame
-            for m in range(1,vecs_ego.shape[1],1):
+            # compute xy diff between nose and head
+            temp2 = temp2[1] - temp2[0]
 
-                # grab frame
-                temp2 = vecs_ego[f,m]
+            # compute angle between t=0 frame and current frame
+            # angle = math.atan2(temp1[0]*temp2[1] - temp1[1]*temp2[0],
+            #                    temp1[0]*temp2[0] + temp1[1]*temp2[1])
+            angle = math.atan2(temp_prev[0]*temp2[1] - temp_prev[1]*temp2[0],
+                               temp_prev[0]*temp2[0] + temp_prev[1]*temp2[1])
+            angles[f,m]=angle
 
-                # compute xy diff between nose and head
-                temp2 = temp2[1] - temp2[0]
+            temp_prev = temp2.copy()
 
-                # compute angle between t=0 frame and current frame
-                # angle = math.atan2(temp1[0]*temp2[1] - temp1[1]*temp2[0],
-                #                    temp1[0]*temp2[0] + temp1[1]*temp2[1])
-                angle = math.atan2(temp_prev[0]*temp2[1] - temp_prev[1]*temp2[0],
-                                   temp_prev[0]*temp2[0] + temp_prev[1]*temp2[1])
-                angles[f,m]=angle
-
-                temp_prev = temp2.copy()
-
-        np.save(fname_out, angles)
-    else:
-        angles = np.load(fname_out)
+    #     np.save(fname_out, angles)
+    # else:
+    #     angles = np.load(fname_out)
 
 
     return angles
