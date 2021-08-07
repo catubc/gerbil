@@ -96,10 +96,15 @@ class Ethogram():
         # root_dir = self.root_dir # '/media/cat/1TB/dan/cohort1/'
 
         #
-        fname_in = os.path.join(self.fname_slp.replace('.slp','_fixed.npy'))
+        if self.fixed_tracks_flag:
+            fname_in = os.path.join(self.fname_slp.replace('.slp','_fixed.npy'))
+        else:
+            fname_in = os.path.join(self.fname_slp.replace('.slp','.npy'))
+
         d = np.load(fname_in)
 
         #
+        print ("feature ids: ", feature_ids)
         d = d[:,animal_id, feature_ids]
         print ("ANIMAL Specific data: ", d.shape)
 
@@ -109,17 +114,15 @@ class Ethogram():
         headnose = []
         headspine = []
         for k in trange(d.shape[0]):
+            # grab frame
             temp = d[k]
+
+            # find nans
             idx1 = np.where(np.isnan(temp[:,0])==False)[0]
             idx2 = np.where(np.isnan(temp[:,1])==False)[0]
 
-            # make sure no nans are present in x but not y
+            # make sure # of nans in x is same as y (Sleap error)
             if idx1.shape[0]!=idx2.shape[0]:
-                continue
-
-            # if all vals found
-            if idx1.shape[0]==6:
-                six.append(k)
                 continue
 
             #
@@ -130,6 +133,11 @@ class Ethogram():
                     headnose.append(k)
                 if 1 in idx1 and 2 in idx2:
                     headspine.append(k)
+
+            # if all 6 features found
+            if idx1.shape[0]==6:
+                six.append(k)
+
         #
         two = np.array(two)
         six = np.array(six)
@@ -182,7 +190,11 @@ class Ethogram():
 
         # root_dir = self.root_dir #'/media/cat/1TB/dan/cohort1/slp/'
 
-        fname_in = os.path.join(self.fname_slp.replace('.slp','_fixed.npy'))
+        if self.fixed_tracks_flag:
+            fname_in = os.path.join(self.fname_slp.replace('.slp','_fixed.npy'))
+        else:
+            fname_in = os.path.join(self.fname_slp.replace('.slp','.npy'))
+
         d = np.load(fname_in)
         d = d[:,animal_id]
 
@@ -334,7 +346,35 @@ class Ethogram():
     def theta(self, v, w):
         return arccos(v.dot(w)/(norm(v)*norm(w)))
 
+    #
+    def get_acceleration_persec_continuous(self):
 
+        #
+        self.acc = np.zeros((self.tracks.shape[0],
+                        self.tracks.shape[1]), dtype=np.float32)
+        self.vel = np.zeros((self.tracks.shape[0],
+                        self.tracks.shape[1]), dtype=np.float32)
+
+        #
+        print (" .... >>>> Try computing vel and acc from the median of all locs <<<")
+
+        # loop over animals
+        for a in range(self.tracks.shape[1]):
+
+            # use the first feature to compute velocity
+            locs1 = self.tracks[:,a,self.features_anchor[0]]
+
+            # velocity
+            vel_ap = locs1[1:,0] - locs1[:-1,0]
+            vel_ml = locs1[1:,1] - locs1[:-1,1]
+            self.vel[1:,a] = np.sqrt(vel_ap**2+vel_ml**2)*self.fps
+
+            # acceleration
+            acc_ap = vel_ap[1:]-vel_ap[:-1]
+            acc_ml = vel_ml[1:]-vel_ml[:-1]
+            self.acc[2:,a] = np.sqrt(acc_ap**2+acc_ml**2)*self.fps
+
+    #
     def get_acceleration_persec_single_frame(self, vecs, animal_id):
         root_dir = '/media/cat/1TB/dan/cohort1/slp/'
 
@@ -364,8 +404,7 @@ class Ethogram():
 
         return acc_ap, acc_ml, acc, vel
 
-
-
+    #
     def load_vecs_single_frame(self, animal_id):
 
         ##################################
@@ -459,6 +498,43 @@ class Ethogram():
                 plt.title("abs acceleration (pix/sec) pdf")
 
             print ('')
+
+    def discretize_data_continuous(self):
+
+        #
+        print ("DISCRETIZING ")
+
+        ##########################################
+        ################# ANGLES #################
+        ##########################################
+        self.angles_discretized = np.zeros(self.angles.shape, dtype=np.float32)+np.nan
+        for a in trange(self.angles.shape[1]):
+            temp = self.angles[:,a] # *self.fps*self.rad_to_degree
+
+            for c in range(len(self.angles_thresh)):
+                idx = np.where(np.logical_and(
+                                    temp>=self.angles_thresh[c][0],
+                                    temp<self.angles_thresh[c][1],
+                               ))[0]
+                self.angles_discretized[idx, a] = c
+
+        ##########################################
+        ############## ACCELERATION ##############
+        ##########################################
+        #
+        self.acc_discretized = np.zeros(self.acc.shape, dtype=np.float32)+np.nan
+        for a in trange(self.acc.shape[1]):
+            temp = self.acc[:,a] # *self.fps*self.rad_to_degree
+
+            #
+            for c in range(len(self.acc_thresh)):
+                idx = np.where(np.logical_and(
+                                    temp>=self.acc_thresh[c][0],
+                                    temp<self.acc_thresh[c][1],
+                               ))[0]
+
+                self.acc_discretized[idx, a]=c
+
 
     #
     def discretize_data_single_frame(self, animal_id,
@@ -584,6 +660,209 @@ class Ethogram():
         return angles
 
     #
+    def smooth_tracks(self, window=5):
+
+        #
+        # loop over animals
+        for a in trange(self.tracks.shape[1], desc='smoothing'):
+            # loop over features
+            for f in range(self.tracks.shape[2]):
+                # loop over x,y
+                for l in range(self.tracks.shape[3]):
+                    #temp[:,p,r] = self.median_filter(vecs_ego[k][:,p,r], window)
+                    self.tracks[:,a,f,l] = self.median_filter(self.tracks[:,a,f,l],
+                                                              window)
+
+    #
+    def compute_discretized_and_histograms_continuous_all_pairs(self):
+
+        #
+        fname_out = os.path.join(self.root_dir,
+                                 os.path.split(self.fname_slp)[1].replace('.slp','')+
+                                 '_continuous_allData_allPairs.npz')
+
+        #
+        if os.path.exists(fname_out)==False:
+
+            #
+            print ("agnels thresholds: ", self.angles_thresh)
+
+            #
+            print ("accelaration thresholds: ", self.acc_thresh)
+
+            #
+            ##################################
+            ##################################
+            ##################################
+            #
+            if self.fixed_tracks_flag:
+                fname_in = os.path.join(self.fname_slp.replace('.slp','_fixed.npy'))
+            else:
+                fname_in = os.path.join(self.fname_slp.replace('.slp','.npy'))
+
+            self.tracks = np.load(fname_in)
+            print ("Loaded tracks; ", self.tracks.shape)
+
+            #
+            ##################################
+            ########## SMOOTH TRACKS #########
+            ##################################
+            if self.smooth_tracks_flag:
+                fname_1 = self.fname_slp.replace('.slp','_tracks_smooth.npy')
+                if os.path.exists(fname_1)==False:
+                    self.smooth_tracks()
+                    np.save(fname_1, self.tracks)
+                else:
+                    self.tracks = np.load(fname_1)
+                    print ("smoothed tracks; ", self.tracks.shape)
+
+            ##################################
+            ############# GET ANGLES #########
+            ##################################
+            self.get_angles_continuous_all_pairs()
+            print ("angles: ", self.angles.shape, " eg.g. ", self.angles[0])
+
+            if self.smooth_angles_flag:
+                self.angles = self.smooth_angles(self.angles)  # same function for single frame
+
+            ##################################
+            ##### ACCUMULATE ANGLES ##########
+            ##################################
+            if self.cumulative_sum:
+                self.compute_angles_cumulative_continuous()
+                print ("angles cumsum: ", self.angles_cumsum.shape, " eg.g. ", self.angles_cumsum[0])
+
+                # assign cumulative angles to main arrays
+                self.angles = self.angles_cumsum
+
+            ##################################
+            ##### DISCRETIZE ACCELERATION ####
+            ##################################
+            self.get_acceleration_persec_continuous()
+
+            ##################################
+            #### DISCRETIZE ANGLES AND ACC ###
+            ##################################
+            self.discretize_data_continuous()
+
+            #
+            np.savez(fname_out,
+                     locs=self.tracks,
+                     angles_thresh=self.angles_thresh,
+                     angles=self.angles,
+                     angles_discretized=self.angles_discretized,
+                     acc_thresh=self.acc_thresh,
+                     acc=self.acc,
+                     acc_discretized=self.acc_discretized,
+                     vel=self.vel
+                     )
+
+        print ("... DONE...")
+
+
+    #
+    def compute_discretized_and_histograms_continuous(self):
+
+        #
+        fps = self.fps
+        rad_to_degree= self.rad_to_degree
+
+        # discretized thresholds for angles
+        # self.angles_thresh = [[-1E8, -45],
+        #                  [-45,+45],
+        #                  [+45,1E8]
+        #                 ]
+        # #
+        # self.acc_thresh = [[0,40],
+        #               #[20,40],
+        #               [40,1E8]]
+
+        #
+        fname_out = os.path.join(self.root_dir,
+                                 os.path.split(self.fname_slp)[1].replace('.slp','')+
+                                 '_continuous_allData.npz')
+
+        #
+        if os.path.exists(fname_out)==False:
+
+            #
+            print ("agnels thresholds: ", self.angles_thresh)
+
+            #
+            print ("accelaration thresholds: ", self.acc_thresh)
+
+            #
+            ##################################
+            ##################################
+            ##################################
+            #
+            if self.fixed_tracks_flag:
+                fname_in = os.path.join(self.fname_slp.replace('.slp','_fixed.npy'))
+            else:
+                fname_in = os.path.join(self.fname_slp.replace('.slp','.npy'))
+
+            self.tracks = np.load(fname_in)
+            print ("Loaded tracks; ", self.tracks.shape)
+
+            #
+            ##################################
+            ########## SMOOTH TRACKS #########
+            ##################################
+            if self.smooth_tracks_flag:
+                fname_1 = self.fname_slp.replace('.slp','_tracks_smooth.npy')
+                if os.path.exists(fname_1)==False:
+                    self.smooth_tracks()
+                    np.save(fname_1, self.tracks)
+                else:
+                    self.tracks = np.load(fname_1)
+                    print ("smoothed tracks; ", self.tracks.shape)
+
+            ##################################
+            ############# GET ANGLES #########
+            ##################################
+            self.get_angles_continuous()
+            print ("angles: ", self.angles.shape, " eg.g. ", self.angles[0])
+
+            if self.smooth_angles_flag:
+                self.angles = self.smooth_angles(self.angles)  # same function for single frame
+
+            ##################################
+            ##### ACCUMULATE ANGLES ##########
+            ##################################
+
+            if self.cumulative_sum:
+                self.compute_angles_cumulative_continuous()
+                print ("angles cumsum: ", self.angles_cumsum.shape, " eg.g. ", self.angles_cumsum[0])
+
+                # assign cumulative angles to main arrays
+                self.angles = self.angles_cumsum
+
+            ##################################
+            ##### DISCRETIZE ACCELERATION ####
+            ##################################
+            self.get_acceleration_persec_continuous()
+
+            ##################################
+            #### DISCRETIZE ANGLES AND ACC ###
+            ##################################
+            self.discretize_data_continuous()
+
+            #
+            np.savez(fname_out,
+                     locs=self.tracks,
+                     angles_thresh=self.angles_thresh,
+                     angles=self.angles,
+                     angles_discretized=self.angles_discretized,
+                     acc_thresh=self.acc_thresh,
+                     acc=self.acc,
+                     acc_discretized=self.acc_discretized,
+                     vel=self.vel
+                     )
+
+        print ("... DONE...")
+
+
+    #
     def compute_discretized_and_histograms_single_frame(self):
 
         animal_id = self.animal_id
@@ -632,39 +911,45 @@ class Ethogram():
             ##################################
             ##################################
             ##################################
-            vecs, times = self.load_vecs_single_frame(animal_id)
+            if False:
+                vecs, times = self.load_vecs_single_frame(animal_id)
+            else:
+                vecs, times = self.load_vecs_single_frame(animal_id)
 
             locs = vecs.copy()
 
             ##################################
+            ############ GET VECTORS #########
             ##################################
-            ##################################
-            if True:
+            if False:
                 vecs_smooth = self.smooth_vecs_ego_single_frame(vecs)
                 print ("vecs smooth: ", vecs_smooth.shape, " e.g.: ", vecs_smooth[0].shape)
+            else:
+                vecs_smooth = vecs
 
             ##################################
-            ##################################
+            ############# GET ANGLES #########
             ##################################
             angles = self.get_angles_single_frame(vecs_smooth, animal_id)
             print ("angles: ", angles.shape, " eg.g. ", angles[0])
 
-            ##################################
-            ##################################
-            ##################################
-            if True:
+            if False:
                 angles = self.smooth_angles(angles)  # same function for single frame
+
+            ##################################
+            ##### ACCUMULATE ANGLES ##########
+            ##################################
 
             if True:
                 angles = self.compute_angles_cumulative(angles)
                 print ("angles: ", angles.shape, " eg.g. ", angles[0])
 
             ##################################
-            ##################################
+            ##### DISCRETIZE ACCELERATION ####
             ##################################
             acc_ap, acc_ml, acc, vel = self.get_acceleration_persec_single_frame(
-                                                        vecs_smooth,
-                                                        animal_id)
+                                                                        vecs_smooth,
+                                                                        animal_id)
 
             ##################################
             ###### MAKE CONTINOUS DATA #######
@@ -672,7 +957,7 @@ class Ethogram():
             # all_continuous = np.hstack((angles[:,2:], acc))
 
             ##################################
-            ######### DISCRETIZE #############
+            #### DISCRETIZE ANGLES AND ACC ###
             ##################################
 
             (all_discretized,
@@ -704,6 +989,33 @@ class Ethogram():
                      )
 
         print ("... DONE...")
+
+    def compute_angles_cumulative_continuous(self):
+
+        #
+        # min_rot = self.min_rot
+        #rad_to_degree= 57.2958
+        self.angles_cumsum = np.zeros(self.angles.shape,
+                                      dtype=np.float32)+np.nan
+
+        # this is complicated: leaving raw angles is most accurate, but might miss movements
+        for a in range(self.angles.shape[1]):
+
+            cumsum = 0
+            for n in trange(self.angles.shape[0], desc='Getting cumulative angles', leave=True):
+                # check for nan, if so just leave it
+                if np.isnan(self.angles[n,a])==False:
+                    cumsum += self.angles[n,a]
+                    if np.abs(cumsum) >= self.min_rot:
+                        self.angles_cumsum[n,a]=cumsum
+                        # print ("large angelf ound: ", cumsum)
+                        cumsum=0
+                    else:
+                        self.angles_cumsum[n,a]=0
+                # if hit nan, reset the cumulative sum
+                else:
+                    cumsum = 0
+
 
     def compute_angles_cumulative(self, angles):
 
@@ -737,6 +1049,7 @@ class Ethogram():
             angles[k] = temp_cleaned
 
         return angles
+
 
 
     def get_angles_single_frame(self, vecs_ego, animal_id):
@@ -781,4 +1094,75 @@ class Ethogram():
 
         return angles
 
+    #
+    def get_angles_continuous(self):
+
+        #
+        print ("features_anchor: ", self.features_anchor)
+
+        #
+        self.angles = np.zeros((self.tracks.shape[0],
+                           self.tracks.shape[1]),dtype=np.float32)+np.nan
+
+        # loop over animals
+        for a in range(self.tracks.shape[1]):
+
+            # loop over frames starting at the second frame:
+            for n in trange(0,self.tracks.shape[0]-1,1):
+
+                # grab the current frame locations
+                temp1 = self.tracks[n,a,self.features_anchor]
+                if np.any(np.isnan(temp1)):
+                    continue
+
+                # grab next frame location
+                temp2 = self.tracks[n+1,a,self.features_anchor]
+                if np.any(np.isnan(temp2)):
+                    continue
+
+                # grab xy differences between head and nose at t=0
+                temp1 = temp1[1] - temp1[0]
+
+                # compute xy diff between nose and head
+                temp2 = temp2[1] - temp2[0]
+
+                # compute angle between t=0 frame and current frame
+                self.angles[n,a] = math.atan2(temp1[0]*temp2[1] - temp1[1]*temp2[0],
+                                              temp1[0]*temp2[0] + temp1[1]*temp2[1])*self.rad_to_degree*self.fps
+
+    #
+    def get_angles_continuous_all_pairs(self):
+
+        #
+        print ("features_anchor: ", self.features_anchor)
+
+        #
+        self.angles = np.zeros((self.tracks.shape[0],
+                           self.tracks.shape[1]),dtype=np.float32)+np.nan
+
+        # loop over animals
+        for a in range(self.tracks.shape[1]):
+
+            # loop over frames starting at the second frame:
+            for n in trange(0,self.tracks.shape[0]-1,1):
+
+                # grab the current frame locations
+                temp1 = self.tracks[n,a,self.features_anchor]
+                if np.any(np.isnan(temp1)):
+                    continue
+
+                # grab next frame location
+                temp2 = self.tracks[n+1,a,self.features_anchor]
+                if np.any(np.isnan(temp2)):
+                    continue
+
+                # grab xy differences between head and nose at t=0
+                temp1 = temp1[1] - temp1[0]
+
+                # compute xy diff between nose and head
+                temp2 = temp2[1] - temp2[0]
+
+                # compute angle between t=0 frame and current frame
+                self.angles[n,a] = math.atan2(temp1[0]*temp2[1] - temp1[1]*temp2[0],
+                                              temp1[0]*temp2[0] + temp1[1]*temp2[1])*self.rad_to_degree*self.fps
 

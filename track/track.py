@@ -116,10 +116,15 @@ class Track():
         if os.path.exists(fname_spine)==False:
 
             self.tracks_spine = self.tracks_centers.copy()*0 + np.nan
-            ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2
+
+            if self.n_animals==4:
+                ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2
+            elif self.n_animals==6:
+                ids = np.arange(6)
             #points=[nose, lefteye, righteye, leftear,rightear, spine1, spine2, spine3,spine4]
             #         0       1        2        3         4      5        6        7      8
 
+            print ("self.tracks;", self.tracks.shape, 'ids :', ids, self.n_animals)
             #
             for n in range(self.tracks.shape[0]):
                 for a in range(self.tracks.shape[1]):
@@ -279,12 +284,12 @@ class Track():
                 print("... slp file loading...")
             self.load_slp()
 
-            tracks = ['female', 'male', 'pup shaved', 'pup unshaved']
-            self.scores = np.zeros((len(self.slp), 4), 'float32') + np.nan
+            #
+            self.scores = np.zeros((len(self.slp), self.n_animals), 'float32') + np.nan
             for n in range(len(self.slp)):
                 for a in range(len(self.slp[n])):
                     name = self.slp[n][a].track.name
-                    idx = tracks.index(name)
+                    idx = self.tracks_names.index(name)
                     self.scores[n, idx] = self.slp[n][a].score
 
             np.save(fname_scores, self.scores)
