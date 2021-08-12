@@ -346,6 +346,41 @@ class Ethogram():
     def theta(self, v, w):
         return arccos(v.dot(w)/(norm(v)*norm(w)))
 
+
+    def get_acceleration_persec_continuous_all_pairs(self):
+
+        #
+        self.acc = np.zeros((self.tracks.shape[0],
+                        self.tracks.shape[1]), dtype=np.float32)+np.nan
+        self.vel = np.zeros((self.tracks.shape[0],
+                        self.tracks.shape[1]), dtype=np.float32)+np.nan
+
+        # make all pair-wise combinations to run through
+        import itertools
+        all_pairs = np.int32(list(itertools.combinations(self.feature_ids, 2)))
+
+        # loop over animals
+        for a in range(self.tracks.shape[1]):
+
+            acc_list = []
+            for i in self.feature_ids:
+                # use the first feature to compute velocity
+                locs1 = self.tracks[:,a,i]
+
+                # velocity
+                vel_ap = locs1[1:,0] - locs1[:-1,0]
+                vel_ml = locs1[1:,1] - locs1[:-1,1]
+                self.vel[1:,a] = np.sqrt(vel_ap**2+vel_ml**2)*self.fps
+
+                # acceleration
+                acc_ap = vel_ap[1:]-vel_ap[:-1]
+                acc_ml = vel_ml[1:]-vel_ml[:-1]
+
+                acc_list.append(np.sqrt(acc_ap**2+acc_ml**2)*self.fps)
+
+            self.acc[2:,a] = np.nanmedian(acc_list,axis=0)
+
+
     #
     def get_acceleration_persec_continuous(self):
 
@@ -681,11 +716,11 @@ class Ethogram():
                                  os.path.split(self.fname_slp)[1].replace('.slp','')+
                                  '_continuous_allData_allPairs.npz')
 
-        #
+        ##################################
         if os.path.exists(fname_out)==False:
 
             #
-            print ("agnels thresholds: ", self.angles_thresh)
+            print ("angles thresholds: ", self.angles_thresh)
 
             #
             print ("accelaration thresholds: ", self.acc_thresh)
@@ -738,7 +773,7 @@ class Ethogram():
             ##################################
             ##### DISCRETIZE ACCELERATION ####
             ##################################
-            self.get_acceleration_persec_continuous()
+            self.get_acceleration_persec_continuous_all_pairs()
 
             ##################################
             #### DISCRETIZE ANGLES AND ACC ###
@@ -1140,29 +1175,39 @@ class Ethogram():
         self.angles = np.zeros((self.tracks.shape[0],
                            self.tracks.shape[1]),dtype=np.float32)+np.nan
 
+        # make all pair-wise combinations to run through
+        import itertools
+        all_pairs = np.int32(list(itertools.combinations(self.feature_ids, 2)))
+
         # loop over animals
         for a in range(self.tracks.shape[1]):
 
-            # loop over frames starting at the second frame:
-            for n in trange(0,self.tracks.shape[0]-1,1):
+            # loop over frames
+            for n in trange(0,self.tracks.shape[0]-1,1, desc='Getting all pairwise angles', leave=True):
 
-                # grab the current frame locations
-                temp1 = self.tracks[n,a,self.features_anchor]
-                if np.any(np.isnan(temp1)):
-                    continue
+                # loop over all pairs:
+                frame_angles = []
+                for pair in all_pairs:
 
-                # grab next frame location
-                temp2 = self.tracks[n+1,a,self.features_anchor]
-                if np.any(np.isnan(temp2)):
-                    continue
+                    # grab the current frame locations
+                    temp1 = self.tracks[n,a,pair]
+                    if np.any(np.isnan(temp1)):
+                        continue
 
-                # grab xy differences between head and nose at t=0
-                temp1 = temp1[1] - temp1[0]
+                    # grab next frame location
+                    temp2 = self.tracks[n+1,a,pair]
+                    if np.any(np.isnan(temp2)):
+                        continue
 
-                # compute xy diff between nose and head
-                temp2 = temp2[1] - temp2[0]
+                    # grab xy differences between head and nose at t=0
+                    temp1 = temp1[1] - temp1[0]
 
-                # compute angle between t=0 frame and current frame
-                self.angles[n,a] = math.atan2(temp1[0]*temp2[1] - temp1[1]*temp2[0],
-                                              temp1[0]*temp2[0] + temp1[1]*temp2[1])*self.rad_to_degree*self.fps
+                    # compute xy diff between nose and head
+                    temp2 = temp2[1] - temp2[0]
+
+                    # compute angle between t=0 frame and current frame
+                    frame_angles.append(math.atan2(temp1[0]*temp2[1] - temp1[1]*temp2[0],
+                                  temp1[0]*temp2[0] + temp1[1]*temp2[1])*self.rad_to_degree*self.fps)
+
+                self.angles[n,a] = np.median(frame_angles)
 
