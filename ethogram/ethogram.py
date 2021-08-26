@@ -53,8 +53,6 @@ class Ethogram():
         #
         self.feature_ids = np.array([0,5,6,7,8,9])
 
-
-
     def get_durations_single_frame(self, data):
 
         # find starts and ends from the non-nan Indexes
@@ -708,6 +706,33 @@ class Ethogram():
                     self.tracks[:,a,f,l] = self.median_filter(self.tracks[:,a,f,l],
                                                               window)
 
+
+    def replace_nans(self):
+
+        print ("self. tracks: ", self.tracks.shape)
+
+        # loop over each animal
+        for a in trange(self.tracks.shape[1], desc='Replacing nans'):
+            # loop over each feature
+            for f in range(self.tracks.shape[2]):
+                # loop over x and y coords
+                for c in range(self.tracks.shape[3]):
+
+                    temp = self.tracks[:,a,f,c]
+
+                    # search forward
+                    idx = np.where(np.isnan(temp))[0]
+                    for id_ in idx:
+                        temp[id_] = temp[id_-1]
+
+                    # search backward
+                    temp = temp[::-1]
+                    idx = np.where(np.isnan(temp))[0]
+                    for id_ in idx:
+                        temp[id_] = temp[id_-1]
+
+                    self.tracks[:,a,f,c] = temp[::-1]
+
     #
     def compute_discretized_and_histograms_continuous_all_pairs(self):
 
@@ -738,7 +763,12 @@ class Ethogram():
             self.tracks = np.load(fname_in)
             print ("Loaded tracks; ", self.tracks.shape)
 
-            #
+            ##################################
+            ########## SMOOTH TRACKS #########
+            ##################################
+            if self.replace_nans_with_last_loc:
+                self.replace_nans()
+
             ##################################
             ########## SMOOTH TRACKS #########
             ##################################

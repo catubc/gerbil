@@ -65,43 +65,6 @@ class Convert():
         else:
             self.tracks_spine = np.load(fname_out)
 
-    # def get_angle(self):
-    #
-    #     #
-    #     fname_out = self.fname[:-4]+"_angles.npy"
-    #
-    #     if os.path.exists(fname_out)==False:
-    #
-    #         #
-    #         self.angles = np.zeros((self.tracks.shape[0],
-    #                                 self.tracks.shape[1]),
-    #                                 'float32')+np.nan
-    #         #
-    #         deg_scale = 180/3.1415926
-    #         deg_scale = 1
-    #         #
-    #         for k in trange(self.tracks.shape[0]):
-    #             for a in range(self.tracks.shape[1]):
-    #                 #x = self.tracks[k,a,:,0]
-    #                 #y = self.tracks[k,a,:,1]
-    #                 x = self.tracks[k,a,5:10,0]
-    #                 y = self.tracks[k,a,5:10,1]
-    #                 idx = np.where(np.isnan(x)==False)[0]
-    #                 if idx.shape[0]>0:
-    #                     x=x[idx]
-    #                     y=y[idx]
-    #                     m,b = np.polyfit(y, x, 1)
-    #                     self.angles[k,a] = np.arctan(m)*deg_scale
-    #                     if x[0]<x[-1]:
-    #                         self.angles[k,a]+=180
-    #                     #self.angles[k,a] = np.arctan(m)*deg_scale
-    #
-    #         np.save(fname_out,
-    #                 self.angles)
-    #     else:
-    #         self.angles = np.load(fname_out)
-    #
-    #     self.angles = self.angles[self.start:self.end]
 
     def get_angle_and_axes_section(self):
 
@@ -119,7 +82,7 @@ class Convert():
         deg_scale = 180/3.1415926
         deg_scale = 1
         #
-        for k in tqdm(range(self.start, self.end,1)):
+        for k in tqdm(range(self.start, self.end,1), desc='getting angles'):
             for a in range(self.tracks.shape[1]):
                 #x = self.tracks[k,a,:,0]
                 #y = self.tracks[k,a,:,1]
@@ -160,6 +123,24 @@ class Convert():
         mdev = np.median(d)
         s = d/mdev if mdev else 0.
         return data[s<m]
+
+
+    def get_axes2(self):
+
+        #
+        fname_out = self.fname[:-4]+"_major_minor.npy"
+
+        if os.path.exists(fname_out)==False:
+
+            self.axes = np.zeros((self.tracks.shape[0],
+                                  self.tracks.shape[1],
+                                  2),
+                                    'float32')+np.nan
+
+            #
+            self.axes[:,:,0] = 100
+            self.axes[:,:,1] = 25
+
 
     def get_axes(self):
 
@@ -213,37 +194,60 @@ class Convert():
 
         self.axes = self.axes[self.start:self.end]/self.scale
 
+    def load_angles_discretized(self):
+
+        data = np.load(self.fname.replace('.npy','_continuous_allData_allPairs.npz'),
+                       allow_pickle=True)
+        #
+        self.angles = data['angles']
+
     #
-    def convert_npy_to_jaaba(self):
+    def get_body_centres(self):
 
-        #
-        if self.end is None:
-            end = self.tracks_spine.shape[0]
-
-        # get rotations
-        self.get_angle_and_axes_section()
-
-        # get body shrinking/stretching
-        #self.get_axes()
-        self.axes = self.axes/self.scale
-
-        #
-        trx_array=[]
-        for k in self.animal_ids:
-
-            # x and y locations of the animals
-            x = np.array(self.tracks_spine[self.start:self.end,k,0], self.dtype) # x-coordinate of the animal in pixels (1 x nframes).
-            y = np.array(self.tracks_spine[self.start:self.end,k,1], self.dtype) # y-coordinate of the animal in pixels (1 x nframes).
+        # x and y locations of the animals
+        self.x=[]
+        self.y=[]
+        for a in range(self.tracks_spine.shape[1]):
+            x = np.array(self.tracks_spine[self.start:self.end,a,0], self.dtype) # x-coordinate of the animal in pixels (1 x nframes).
+            y = np.array(self.tracks_spine[self.start:self.end,a,1], self.dtype) # y-coordinate of the animal in pixels (1 x nframes).
 
             # remove zeros
             idx = np.where(x==0)[0]
             x[idx]=np.nan
             y[idx]=np.nan
 
+            self.x.append(x)
+            self.y.append(y)
+
+
+    #
+    def convert_npy_to_jaaba(self):
+
+        # set the end of the track to all frames
+        if self.end is None:
+            self.end = self.tracks_spine.shape[0]
+
+        # GET ANGLES
+        if False:  # OLD ANGLE COMPUTATION METHOD
+            self.get_angle_and_axes_section()
+        else:
+            self.load_angles_discretized()   # New method comes from discretization
+
+        # GET BODY CENTRES
+        self.get_body_centres()
+
+        # GET BODY AXES
+        self.get_axes2()   # this function just fixes body axes
+        self.axes = self.axes/self.scale
+
+        #
+        trx_array=[]
+        for k in self.animal_ids:
+
             # convert values according to scale:
             if self.scale !=1:
-                x = x/self.scale
-                y = y/self.scale
+                self.x[k] = self.x[k]/self.scale
+                self.y[k] = self.y[k]/self.scale
 
             # meta data for the video and animal
             nframes = np.array(self.end-self.start,self.dtype)    # Number of frames in the trajectory of the current animal (scalar).
@@ -252,10 +256,12 @@ class Convert():
             off = 0                    # Offset for computing index into x, y, etc. Always equal to 1 - firstframe (scalar).
             id_ = k+1                  # Identity number of the trajectory (scalar). USE MATLAB VALUES
 
+            print ("nframes: ", nframes, ' firstframe: ', firstframe, '  endframe', endframe)
+
             # convert from pixels to distances
             pixels_per_mm = 2                       # number of pixels per mm # to figure out
-            x_mm = x//pixels_per_mm                 # x-coordinate of the animal in mm (1 x nframes).
-            y_mm = y//pixels_per_mm                 # y-coordinate of the animal in mm (1 x nframes).
+            x_mm = self.x[k]//pixels_per_mm                 # x-coordinate of the animal in mm (1 x nframes).
+            y_mm = self.y[k]//pixels_per_mm                 # y-coordinate of the animal in mm (1 x nframes).
 
             #
             theta_mm = self.angles                     # Orientation of the animal in real coordinates. This is often the same as theta, if no transformation other than translation and scaling is performed between pixels and real coordinates (1 x nframes).
@@ -277,8 +283,8 @@ class Convert():
 
             #
             trx = {
-             'x': x,
-             'y':y,
+             'x': self.x[k],
+             'y': self.y[k],
              'theta': self.angles[:,k],
              'a': self.axes[:,k,0],
              'b': self.axes[:,k,1],
@@ -297,7 +303,7 @@ class Convert():
              'fps':self.fps,
              'timestamps': timestamps
             }
-
+            # print ("Trx: ", k, trx)
             trx_array.append(trx)
 
 
