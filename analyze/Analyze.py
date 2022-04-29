@@ -16,15 +16,17 @@ clrs = ['red','blue','cyan','green']
 
 def plot_pairwise_interactions2(locs_multi_hour):
 
-
+    #
     names= ['female','male','pup1','pup2']
     clrs = ['red','blue','cyan','green']
 
     x_ticks=['female','male','pup1','pup2']
     text_clr = 'red'
 
-    distance_threshold = 250 # # of pixels away assume 1 pixel ~= 0.5mm -> 20cm
-    time_window = 1*25 # no of seconds to consider
+    #
+    distance_threshold_pixels = 200 # number of pixels between animals;
+                                    # assume 1 pixel ~= 0.5mm -> 200pixels = 100mm = 10cm
+    min_time_together = 5*25 # no of seconds to consider
     smoothing_window = 3
     min_distance = 25 # number of frames window
     #
@@ -68,7 +70,9 @@ def plot_pairwise_interactions2(locs_multi_hour):
             idx_array = []
             diffs = np.sqrt((traces[0][:,0]-traces[1][:,0])**2+
                             (traces[0][:,1]-traces[1][:,1])**2)
-            idx = np.where(diffs<distance_threshold)[0]
+
+            #
+            idx = np.where(diffs<distance_threshold_pixels)[0]
 
             # COMPUTE TOTAL TIME TOGETHER
             #print ("Pairwise: ", pair, idx.shape)
@@ -76,7 +80,7 @@ def plot_pairwise_interactions2(locs_multi_hour):
 
             # COMPUTE # OF INTERACTIONS;
             diffs_idx = idx[1:]-idx[:-1]
-            idx2 = np.where(diffs_idx>5)[0]
+            idx2 = np.where(diffs_idx>min_time_together)[0]
             interactions[pair[0],pair[1]]=idx2.shape[0]
 
             # SAVE TIMES OF INTERACTION
@@ -119,7 +123,7 @@ def plot_pairwise_interactions2(locs_multi_hour):
                 #print ("pair_", pair_)
                 diffs = np.sqrt((traces[pair_[0]][:,0]-traces[pair_[1]][:,0])**2+
                                 (traces[pair_[0]][:,1]-traces[pair_[1]][:,1])**2)
-                idx_temp = np.where(diffs<distance_threshold)[0]
+                idx_temp = np.where(diffs<distance_threshold_pixels)[0]
                 #print ("pair_: ", pair_, idx_temp.shape)
                 idx_array.append(idx_temp)
 
@@ -155,7 +159,7 @@ def plot_pairwise_interactions2(locs_multi_hour):
             for pair2 in pairs2:
                 diffs = np.sqrt((traces[pair2[0]][:,0]-traces[pair2[1]][:,0])**2+
                                  (traces[pair2[0]][:,1]-traces[pair2[1]][:,1])**2)
-                idx_temp = np.where(diffs<distance_threshold)[0]
+                idx_temp = np.where(diffs<distance_threshold_pixels)[0]
                 #print ("pair2: ", pair2, idx_temp.shape)
                 idx_array.append(idx_temp)
 
@@ -269,7 +273,7 @@ def plot_pairwise_interactions(locs, suptitle):
     text_clr = 'red'
 
     distance_threshold = 250 # # of pixels away assume 1 pixel ~= 0.5mm -> 20cm
-    time_window = 1*25 # no of seconds to consider
+    time_window = 5*25 # no of seconds to consider
     smoothing_window = 3
     min_distance = 25 # number of frames window
 
@@ -307,7 +311,7 @@ def plot_pairwise_interactions(locs, suptitle):
 
         # COMPUTE # OF INTERACTIONS;
         diffs_idx = idx[1:]-idx[:-1]
-        idx2 = np.where(diffs_idx>5)[0]
+        idx2 = np.where(diffs_idx>time_window)[0]
         interactions[pair[0],pair[1]]=idx2.shape[0]
 
         # SAVE TIMES OF INTERACTION

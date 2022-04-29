@@ -234,7 +234,7 @@ class Visualize():
                     histories[i, 0, 0] = x
                     histories[i, 0, 1] = y
                 except:
-                    print ("history error...")
+					print ("history error...")
                     histories[i, 1:] = histories[i, :4]
                     histories[i, 0, 0] = np.nan
                     histories[i, 0, 1] = np.nan
