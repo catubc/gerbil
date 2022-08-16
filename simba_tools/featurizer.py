@@ -137,28 +137,10 @@ class GerbilFeaturizer(object):
             target_df = pd.DataFrame(video_data['targets'], columns=['target'])
             out_df = pd.concat([animal_df_1, animal_df_2, features_df, target_df], axis=1)
             out_df = out_df.reset_index().rename(columns={'index': 'FRAME'})
-            print(out_df)
+            #print(out_df)
             out_df.insert(loc=0, column='VIDEO', value=video_name)
             results_df_lst.append(out_df)
         self.out_data = pd.concat(results_df_lst, axis=0)
         self.out_data.columns = self.out_data.columns.map(str)
         self.out_data.to_parquet(os.path.join(self.out_path, 'features_{}.parquet'.format(self.datetime)))
-
-test = GerbilFeaturizer(in_path='_legacy/gerbil_data/input',
-                        out_path='_legacy/gerbil_data/featurized')
-start = time.time()
-test.extract_features()
-end = time.time()
-test.organize_and_save_results()
-
-
-
-
-
-
-
-
-
-
-
 
