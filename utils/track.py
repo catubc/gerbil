@@ -25,6 +25,7 @@ import h5py
 #
 names=  ['female','male','pup1','pup2','pup3','pup4']
 
+############################################
 class Track():
 
     #
@@ -119,7 +120,8 @@ class Track():
             if self.n_animals==4:
                 ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2
             elif self.n_animals==6:
-                ids = np.arange(6)
+                #ids = np.arange(6)
+                ids = [2,3,1,0,4,5]
             elif self.n_animals==2:
                 ids = [1,2,3,0,4,5]
               
@@ -132,6 +134,7 @@ class Track():
                 for a in range(self.tracks.shape[1]):
                     for id_ in ids:
                         if np.isnan(self.tracks[n,a,id_,0])==False:
+                            # this overwrites the "spine" with the first non-zero value
                             self.tracks_spine[n,a]=self.tracks[n,a,id_]
 
                             break
@@ -139,6 +142,63 @@ class Track():
         else:
             self.tracks_spine = np.load(fname_spine)
 
+    #
+    def fix_all_tracks(self):
+
+        #
+        self.animal_ids = [0,1,2,3,4,5]
+        self.tracks_names = ['female','male','pup1','pup2','pup3','pup4']
+        self.recompute_spine_centres=True
+        self.verbose = True                         # gives additional printouts
+        self.n_animals = len(self.animal_ids)      # number of animals
+        self.filter_width = 10                      # this is the median filter width in frames; e.g. 10 ~=0.4 seconds
+                                                     # higher values provide more stability, but less temporally precise locations
+        # load the tracks
+        self.load_tracks()
+
+        ####################################################
+        ### OPTIONAL - MEDIAN FILTER ALL TRACKS ############
+        ####################################################
+        if True:
+            self.filter_tracks()
+
+        # makes scores based on .slp output? (to check)
+        # TODO: is this even used!?
+        self.get_scores()
+
+        # uses track_spines to break up all the data into continuous chunks
+        self.max_jump_single_frame = 30  # max distance in pixels (?) that an animal can move in a single frame
+        self.make_tracks_chunks()
+
+        # deletig very short chunks of track that are orphaned..
+        min_chunk_len = 8
+        self.del_short_chunks(min_chunk_len)
+
+        ############## FIX TRACKS PARAMS #############
+        self.time_threshold = 25       # window to search for nearest chunks, about 1sec seems fair...
+        self.safe_chunk_length = 25    # chunks this long will not change id
+        self.min_chunk_len = 4         # min length of chukn to be used for anchoring/correcting
+        self.max_distance_merge = 75   # max pix diff allowed for merging when using model;
+                                        # - not just for neighbouring frames
+        self.memory_length = 25      # how many frames back is it ok to remember a prev animal
+        self.verbose = False
+        self.update_tracks = True
+
+        # parameters for fixing track chunking
+        self.max_time_automerge = 25      # time to automerget chunks from same animal ???
+        self.max_dist_automerge = 25     # distance to auto merge chunks from same animal separated by single time skip
+
+        #
+        self.use_spine_for_track_fix=True
+
+        # otherwise use a very specific body part to track animal
+        if self.use_spine_for_track_fix==False:
+            self.track_fix_body_id = 2
+
+        #
+        self.fix_tracks()
+
+    #
     def make_tracks_chunks(self):
         ''' Function finds temporally continuous tracks
             Time-continuous-tracks
@@ -211,18 +271,58 @@ class Track():
                 # del
                 del self.time_cont_tracks[a][0]
 
-
         # also make a similar array to tracks_spine that contains the mean confidence
         self.tracks_scores_mean = np.zeros((self.tracks_spine.shape[0],
                                                  self.tracks_spine.shape[1]),
                                                 'float32')+np.nan
+
+        #
         for animal_id in range(len(self.tracks_chunks)):
             for c in range(len(self.tracks_chunks[animal_id])):
                 chunk = self.tracks_chunks[animal_id][c]
                 mean = self.scores[chunk[0]:chunk[1]+1,animal_id].mean(0)
                 self.tracks_scores_mean[chunk[0]:chunk[1]+1,animal_id]= mean
 
+    #
+    def memory_interpolate_tracks_spine(self):
 
+        ''' Idea is to check for neighbouring bouts of movement if there has not been a lot of
+            space movement, we can freeze the centroid at the last location (or middle point)
+
+            - middle point could help actulaly to visualize ugly errors
+        '''
+
+        #
+        animal_ids = np.arange(self.tracks_spine.shape[1])
+
+        #
+        for animal_id in animal_ids:
+
+            #
+            max_dist = 50
+            seg_previous = self.tracks_chunks[animal_id][0]
+            for chunk_id in range(1,len(self.tracks_chunks[animal_id]),1):
+
+                #
+                seg_current = self.tracks_chunks[animal_id][chunk_id]
+
+                # compute distance
+                loc_previous = self.tracks_spine_fixed[seg_previous[1],animal_id]
+                loc_current = self.tracks_spine_fixed[seg_current[0],animal_id]
+
+                #
+                dist = np.linalg.norm(loc_previous-loc_current)
+
+                # merge
+                if dist<=max_dist:
+                   # print (seg_previous[1],  seg_current[0],
+                    #       loc_previous+loc_current, np.mean((loc_previous, loc_current),axis=0))
+                    self.tracks_spine[seg_previous[1]: seg_current[0], animal_id] = np.mean((loc_previous, loc_current),axis=0)
+
+                #
+                seg_previous = seg_current
+
+    #
     def filter_tracks(self):
     
         #
@@ -702,7 +802,10 @@ class Track():
             self.tracks_chunks_fixed.append(np.array(self.tracks_chunks[k].copy()))
 
         #
-        self.tracks_spine_fixed = self.tracks_spine.copy()
+        if self.use_spine_for_track_fix==True:
+            self.tracks_spine_fixed = self.tracks_spine.copy()
+        else:
+            self.tracks_spine_fixed = self.tracks[:,:,self.track_fix_body_id]
 
         # loop while unfixed chunks remain
         # This function goes over each chunk of slp track starting at beginning
