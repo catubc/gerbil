@@ -107,6 +107,24 @@ class Track():
         #
         self.get_track_spine_centers()
 
+    #
+    def bin_track_spines(self):
+        #
+        self.tracks_spine = (self.tracks_spine//self.bining_bin_size)*self.bining_bin_size+ self.bining_bin_size//2
+
+    #
+    def save_binned_centroid(self):
+
+        fname_spine = self.fname_slp[:-4]+"_spine_binned.npy"
+        np.save(fname_spine, self.tracks_spine)
+
+    #
+    def save_centroid(self):
+
+        fname_spine = self.fname_slp[:-4]+"_spine.npy"
+        np.save(fname_spine, self.tracks_spine)
+
+    #
     def get_track_spine_centers(self):
         '''  This function returns single locations per animal
             with a focus on spine2, spine3, spine1 etc...
@@ -115,32 +133,121 @@ class Track():
         fname_spine = self.fname_slp[:-4]+"_spine.npy"
         if os.path.exists(fname_spine)==False or self.recompute_spine_centres==True:
 
+            # initialize spine to nans
             self.tracks_spine = self.tracks_centers.copy()*0 + np.nan
 
-            if self.n_animals==4:
-                ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2
-            elif self.n_animals==6:
-                #ids = np.arange(6)
-                ids = [2,3,1,0,4,5]
-            elif self.n_animals==2:
-                ids = [1,2,3,0,4,5]
-              
-            #points=[nose, lefteye, righteye, leftear,rightear, spine1, spine2, spine3,spine4]
-            #         0       1        2        3         4      5        6        7      8
+            #if self.n_animals==4:
+            #    ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2
 
-            #print ("self.tracks;", self.tracks.shape, 'ids :', ids, self.n_animals)
-            #
+            if self.use_dynamic_centroid == True:
+                ids = [2,3,1,0,4,5]
+            else:
+                ids = self.centroid_body_id
+
+            # search over all times
             for n in range(self.tracks.shape[0]):
+
+                # search over all animals
                 for a in range(self.tracks.shape[1]):
+
+                    # search over all body ids for the first non-nan
                     for id_ in ids:
                         if np.isnan(self.tracks[n,a,id_,0])==False:
                             # this overwrites the "spine" with the first non-zero value
                             self.tracks_spine[n,a]=self.tracks[n,a,id_]
-
                             break
+
             np.save(fname_spine, self.tracks_spine)
         else:
             self.tracks_spine = np.load(fname_spine)
+
+    # cleanup tracks
+    def clean_tracks_spine(self,
+                    max_jump_allowed = 50,
+                    max_dist_to_join = 50,
+                    min_chunk_len=5):
+
+        ''' Method to fix the large jumps, short orphaned segments,
+            and interpolate across short distances
+
+            Input:
+            - track array for a single animal: [n_time_steps, 2], where the 2 is for x-y locations
+            - max_jump_allowed: maximum number of pixels (in euclidean distance) a track is allowed to jump before being split
+            - max_dist_to_join: when joining orphaned tracks, the largest distacne allowed between 2 track bouts
+            - min_chunk_len = shortest chunk allowed (this is applied at the end after joining all the chunks back
+
+            Output: fixed track
+
+        '''
+
+        #
+        for a in trange(self.tracks_spine.shape[1], desc='cleaning animal tracks'):
+            track_xy1 = self.tracks_spine[:,a].copy()
+
+            ########################################
+            ###########  Delete big jumps ##########
+            ########################################
+            for k in range(1,track_xy1.shape[0]-1,1):
+                if np.linalg.norm(track_xy1[k]-track_xy1[k-1])>max_jump_allowed:
+                    track_xy1[k]=np.nan
+
+            ########################################
+            ##### Join segments that are close #####
+            ########################################
+            #
+            last_chunk_xy = None
+
+            # check if we start outside chunk or inside
+            if np.isnan(track_xy1[0,0])==False:
+                inside = True
+            else:
+                inside = False
+
+            # interpolate between small bits
+            for k in range(1,track_xy1.shape[0]-1,1):
+                if np.isnan(track_xy1[k,0]):
+                    if inside:
+                        inside=False
+                        last_chunk_xy = track_xy1[k]
+                        last_chunk_idx = k
+                else:
+                    if inside==False:
+                        inside=True
+                        new_chunk_xy = track_xy1[k]
+                        new_chunk_idx = k
+                        if last_chunk_xy is not None:
+                            dist = np.linalg.norm(track_xy1[k]-track_xy1[k-1])
+                            if dist<= max_dist_to_join:
+                                track_xy1[last_chunk_idx:new_chunk_idx] = new_chunk_xy
+
+            ########################################
+            ##  Delete short segments left behind ##
+            ########################################
+            #
+            chunk_start_xy = None
+
+            # check if we start outside chunk or inside
+            if np.isnan(track_xy1[0,0])==False:
+                chunk_start_idx = 0
+                inside = True
+            else:
+                inside = False
+
+            # interpolate between small bits
+            for k in range(1,track_xy1.shape[0]-1,1):
+                if np.isnan(track_xy1[k,0]):
+                    if inside:
+                        inside=False
+                        chunk_end_idx = k
+                        if (chunk_end_idx - chunk_start_idx)<min_chunk_len:
+                            track_xy1[chunk_start_idx:chunk_end_idx]= np.nan
+                else:
+                    if inside==False:
+                        inside=True
+                        chunk_start_idx = k
+
+            #
+            self.tracks_spine[:,a] = track_xy1.copy()
 
     #
     def fix_all_tracks(self):
@@ -153,15 +260,30 @@ class Track():
         self.n_animals = len(self.animal_ids)      # number of animals
         self.filter_width = 10                      # this is the median filter width in frames; e.g. 10 ~=0.4 seconds
                                                      # higher values provide more stability, but less temporally precise locations
+
         # load the tracks
         self.load_tracks()
 
         ####################################################
         ### OPTIONAL - MEDIAN FILTER ALL TRACKS ############
         ####################################################
-        if True:
-            self.filter_tracks()
+        #
+        #self.filter_tracks_spines()
 
+        ####################################################
+        #### CLEANUP: REMOVE BIG JUMPS, SHORT SEGS #########
+        ####################################################
+        #
+        max_jump_allowed = 50              # maximum distance that a gerbil can travel in 1 frame
+        max_dist_to_join = 50              # maximum distnace between 2 chunks that can safely be merged
+        min_chunk_len = 5                  # minimum number of frames that a chunk has to survive for in order to be saved
+        self.clean_tracks_spine(max_jump_allowed,
+                                max_dist_to_join,
+                                min_chunk_len)
+
+        ####################################################
+        ########### BREAK UP TACKS INTO CHUNKS #############
+        ####################################################
         # makes scores based on .slp output? (to check)
         # TODO: is this even used!?
         self.get_scores()
@@ -170,11 +292,9 @@ class Track():
         self.max_jump_single_frame = 30  # max distance in pixels (?) that an animal can move in a single frame
         self.make_tracks_chunks()
 
-        # deletig very short chunks of track that are orphaned..
-        min_chunk_len = 8
-        self.del_short_chunks(min_chunk_len)
-
+        ##############################################
         ############## FIX TRACKS PARAMS #############
+        ##############################################
         self.time_threshold = 25       # window to search for nearest chunks, about 1sec seems fair...
         self.safe_chunk_length = 25    # chunks this long will not change id
         self.min_chunk_len = 4         # min length of chukn to be used for anchoring/correcting
@@ -189,14 +309,15 @@ class Track():
         self.max_dist_automerge = 25     # distance to auto merge chunks from same animal separated by single time skip
 
         #
-        self.use_spine_for_track_fix=True
+        self.reallocate_track_segments()
 
-        # otherwise use a very specific body part to track animal
-        if self.use_spine_for_track_fix==False:
-            self.track_fix_body_id = 2
-
+        #############################################
+        ########## RERUN TRACK CLEANUP ##############
+        #############################################
         #
-        self.fix_tracks()
+        self.clean_tracks_spine(max_jump_allowed,
+                                max_dist_to_join,
+                                min_chunk_len)
 
     #
     def make_tracks_chunks(self):
@@ -335,11 +456,14 @@ class Track():
     def filter_tracks_spines(self):
     
         # 
-        for k in self.animal_ids:
-            for f in range(self.tracks.shape[3]):
-                temp = self.tracks_spine[:,k,f] #  
-                self.tracks_spine[:,k,f] = scipy.ndimage.median_filter(temp, 
-                                                                       size=self.filter_width)
+        for k in range(self.tracks_spine.shape[1]):
+            for f in range(self.tracks_spine.shape[2]):
+                temp = self.tracks_spine[:,k,f] #
+                idx = np.where(np.isnan(temp))
+                temp = scipy.ndimage.median_filter(temp,
+                                                   size=self.filter_width)
+                temp[idx] = np.nan
+                self.tracks_spine[:,k,f] = temp
  
     #
     def del_short_chunks(self, min_chunk_len=2):
@@ -777,7 +901,7 @@ class Track():
 
 
     #
-    def fix_tracks(self,
+    def reallocate_track_segments(self,
                    t=None,
                    t_end=None):
 
@@ -802,10 +926,10 @@ class Track():
             self.tracks_chunks_fixed.append(np.array(self.tracks_chunks[k].copy()))
 
         #
-        if self.use_spine_for_track_fix==True:
-            self.tracks_spine_fixed = self.tracks_spine.copy()
-        else:
-            self.tracks_spine_fixed = self.tracks[:,:,self.track_fix_body_id]
+        #if self.use_dynamic_centroid==True:
+        self.tracks_spine_fixed = self.tracks_spine.copy()
+        #else:
+        #    self.tracks_spine_fixed = self.tracks[:,:,self.centroid_body_id]
 
         # loop while unfixed chunks remain
         # This function goes over each chunk of slp track starting at beginning
