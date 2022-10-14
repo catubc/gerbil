@@ -21,6 +21,7 @@ import cv2
 from tqdm import tqdm, trange
 import sleap
 import h5py
+from scipy import signal
 
 #
 names=  ['female','male','pup1','pup2','pup3','pup4']
@@ -134,7 +135,9 @@ class Track():
         if os.path.exists(fname_spine)==False or self.recompute_spine_centres==True:
 
             # initialize spine to nans
-            self.tracks_spine = self.tracks_centers.copy()*0 + np.nan
+            self.tracks_spine = np.zeros((self.tracks.shape[0],
+                                          self.tracks.shape[1],
+                                          self.tracks.shape[3]))*0 + np.nan
 
             #if self.n_animals==4:
             #    ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2
@@ -452,6 +455,31 @@ class Track():
                 temp = self.tracks[:,k,:,f] #  
                 self.tracks[:,k,:,f] = scipy.ndimage.median_filter(temp, 
                                                                    size=self.filter_width)
+
+
+    def filter_tracks_spines_butterworth(self):
+
+        def butter_filter(data, butterCutoffFreq, order=2):
+            b, a = signal.butter(order, butterCutoffFreq, 'low', analog=True)
+            y = signal.filtfilt(b, a, data)
+            return y
+
+        #
+        for k in range(self.tracks_spine.shape[1]):
+            for f in range(self.tracks_spine.shape[2]):
+                temp = self.tracks_spine[:,k,f] #
+                idx = np.where(np.isnan(temp))
+
+                #
+                butterCutoffFreq = 5
+                temp = butter_filter(temp, butterCutoffFreq)
+                #temp = scipy.ndimage.median_filter(temp,
+                #                                   size=self.filter_width)
+
+                #
+                temp[idx] = np.nan
+                self.tracks_spine[:,k,f] = temp
+
     #
     def filter_tracks_spines(self):
     
@@ -460,8 +488,12 @@ class Track():
             for f in range(self.tracks_spine.shape[2]):
                 temp = self.tracks_spine[:,k,f] #
                 idx = np.where(np.isnan(temp))
+
+                #
                 temp = scipy.ndimage.median_filter(temp,
                                                    size=self.filter_width)
+
+                #
                 temp[idx] = np.nan
                 self.tracks_spine[:,k,f] = temp
  
