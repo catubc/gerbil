@@ -84,6 +84,7 @@ class Track():
         fname_npy = self.fname_slp[:-4] + ".npy"
         np.save(fname_npy, tracks)
 
+    #
     def load_tracks(self):
 
         #
@@ -105,6 +106,7 @@ class Track():
         self.tracks_centers = np.nanmean(
                                 self.tracks,
                                 axis=2)
+
         #
         self.get_track_spine_centers()
 
@@ -134,6 +136,14 @@ class Track():
         fname_spine = self.fname_slp[:-4]+"_spine.npy"
         if os.path.exists(fname_spine)==False or self.recompute_spine_centres==True:
 
+            ############### CHECK IF WORKING ON HUDDLE ###########
+            # check if huddle type
+            if self.track_type == 'huddle':
+                self.tracks_spine = self.tracks.squeeze()[:,None]
+                np.save(fname_spine, self.tracks_spine)
+                return
+
+            ################## COMPUTE SPINES FOR ANIMAL TRACKS ###############
             # initialize spine to nans
             self.tracks_spine = np.zeros((self.tracks.shape[0],
                                           self.tracks.shape[1],
@@ -252,6 +262,64 @@ class Track():
             #
             self.tracks_spine[:,a] = track_xy1.copy()
 
+    def fix_huddles(self):
+   #
+        self.animal_ids = [0]
+        self.track_type = 'huddle'
+        self.tracks_names = ['huddle']
+        self.recompute_spine_centres = True
+        self.verbose = True                         # gives additional printouts
+        self.n_animals = 1     # number of animals
+        self.filter_width = 10                      # this is the median filter width in frames; e.g. 10 ~=0.4 seconds
+                                                     # higher values provide more stability, but less temporally precise locations
+
+        # load the tracks
+        self.use_dynamic_centroid = False
+        self.load_tracks()
+
+        print ("spine tracks: ", self.tracks_spine.shape)
+        ####################################################
+        ### OPTIONAL - MEDIAN FILTER ALL TRACKS ############
+        ####################################################
+        #
+        #self.filter_tracks_spines()
+
+        ####################################################
+        #### CLEANUP: REMOVE BIG JUMPS, SHORT SEGS #########
+        ####################################################
+        #
+        max_jump_allowed = 50              # maximum distance that a gerbil can travel in 1 frame
+        max_dist_to_join = 50              # maximum distnace between 2 chunks that can safely be merged
+        min_chunk_len = 5                  # minimum number of frames that a chunk has to survive for in order to be saved
+        self.clean_tracks_spine(max_jump_allowed,
+                                max_dist_to_join,
+                                min_chunk_len)
+
+        ####################################################
+        ########### BREAK UP TACKS INTO CHUNKS #############
+        ####################################################
+        # makes scores based on .slp output? (to check)
+        # TODO: is this even used!?
+        self.get_scores()
+
+        # uses track_spines to break up all the data into continuous chunks
+        self.max_jump_single_frame = 30  # max distance in pixels (?) that an animal can move in a single frame
+
+        print ("tracks spine: ", self.tracks_spine.shape)
+
+        self.make_tracks_chunks_huddles()
+
+        #############################################
+        ########## RERUN TRACK CLEANUP ##############
+        #############################################
+        #
+        self.clean_tracks_spine(max_jump_allowed,
+                                max_dist_to_join,
+                                min_chunk_len)
+
+        #
+        self.tracks_spine_fixed = self.tracks_spine
+
     #
     def fix_all_tracks(self):
 
@@ -322,7 +390,45 @@ class Track():
                                 max_dist_to_join,
                                 min_chunk_len)
 
-    #
+
+
+#
+    def make_tracks_chunks_huddles(self):
+        ''' Function finds temporally continuous tracks
+            Time-continuous-tracks
+             Function breaks up continuous tracks that are too far apart;
+             important for when ids jump around way too much
+            Loop over the tcrs and check if jumps are too high to re-break track
+        '''
+
+        print ("... Making tracks chunks...")
+
+        # break distances that are very large over single jumps
+        # join by time
+        self.tracks_chunks = []
+
+        track = self.tracks_spine[:,0]
+
+        in_segment = False
+        if np.isnan(track[0,0])==False:
+            in_segment = True
+            start = 0
+            end = None
+
+        for k in trange(1,track.shape[0],1):
+            if np.isnan(track[k,0])==True:
+                if in_segment==True:
+                    self.tracks_chunks.append([start, k-1])
+                    in_segment = False
+            else:
+                if in_segment==False:
+                    start = k
+                    end = None
+                    in_segment=True
+
+        self.tracks_chunks.append([start, k-1])
+
+            #
     def make_tracks_chunks(self):
         ''' Function finds temporally continuous tracks
             Time-continuous-tracks
@@ -395,6 +501,11 @@ class Track():
                 # del
                 del self.time_cont_tracks[a][0]
 
+        # Huddle tracks don't seem ot have proper score name files
+        #  - and we don't use them for the correcting of the track errors
+        if self.track_type == 'huddle':
+            return
+
         # also make a similar array to tracks_spine that contains the mean confidence
         self.tracks_scores_mean = np.zeros((self.tracks_spine.shape[0],
                                                  self.tracks_spine.shape[1]),
@@ -406,6 +517,118 @@ class Track():
                 chunk = self.tracks_chunks[animal_id][c]
                 mean = self.scores[chunk[0]:chunk[1]+1,animal_id].mean(0)
                 self.tracks_scores_mean[chunk[0]:chunk[1]+1,animal_id]= mean
+
+
+
+    #
+    def memory_interpolate_huddle(self, max_dist):
+        ''' Idea is to merge all huddle pieces that are less than some distance apart over time
+            - regardless of the time between
+            - regardless of intervening chunks in between!
+        '''
+
+        #self.clean_tracks_spine()
+
+        #
+        self.tracks_spine_fixed = self.tracks_spine_fixed.squeeze()
+
+        #
+        all_segs = self.tracks_chunks
+        all_segs_inner = all_segs.copy()
+
+        #
+        seg_current = all_segs[0]
+
+        #
+        final_merged_times = []
+        final_merged_locs = []
+
+        # loop while some of the segs are left
+        while len(all_segs)>0:
+
+            # remove the latest segment out
+            del all_segs_inner[0]
+
+            # grab the first segment and check against all other segments for distance
+            merged_times = []
+            merged_locs = []
+            merged_times.append(seg_current)
+            merged_locs.append(self.tracks_spine_fixed[seg_current[0]:seg_current[1]])
+
+            #
+            non_merged_chunks = []
+            while len(all_segs_inner)>0:
+                #print ("MERGED LOCS: ", merged_locs)
+                #
+                seg_next = all_segs_inner[0]
+
+                # compute distance between last location of the first chunk
+                #   and first location of the following chunk
+                if False:
+                    loc_current = self.tracks_spine_fixed[seg_current[1],0]
+                    loc_next = self.tracks_spine_fixed[seg_next[0],0]
+                    dist = np.linalg.norm(loc_current-loc_next)
+                else:
+                    #print ("merged locs: ", merged_locs)
+                    merged_locs_temp = np.vstack(merged_locs)
+                    loc_current = self.tracks_spine_fixed[seg_next[0]]
+                    #print ("loc current: ", loc_current)
+
+                    coords = (merged_locs_temp-loc_current).squeeze()
+                    dist = np.min(np.array([np.linalg.norm(v) for v in coords]))
+
+                # if close enough
+                if dist<=max_dist:
+
+                    ############# MERGE IN SPACE ##########
+                    temp_locs = np.zeros((seg_next[0] - seg_current[1],2))+loc_current
+
+                    # add distance in between
+                    merged_locs.append(temp_locs)
+
+                    # add new segement locations
+                    merged_locs.append(self.tracks_spine_fixed[seg_next[0]:seg_next[1]].squeeze())
+
+                    ############### MERGE IN TIME #################
+                    temp_times = [seg_current[1],seg_next[0]]
+
+                    # add time in between
+                    merged_times.append(temp_times)
+
+                    # add new segement
+                    merged_times.append(seg_next)
+
+                #
+                else:
+                    #print (seg_current, " too far away ", seg_next, "dist: ", dist,
+                    #       self.tracks_spine_fixed[seg_current[1]],
+                    #       self.tracks_spine_fixed[seg_next[0]])
+                    non_merged_chunks.append(seg_next)
+
+                #
+                seg_current = [seg_current[0], seg_next[1]]
+
+                #
+                del all_segs_inner[0]
+
+            #
+            final_merged_times.append(merged_times)
+            final_merged_locs.append(merged_locs)
+
+            # on exit from while loop delete the first entry in the
+            #print (" non merged chunks: ", non_merged_chunks)
+            all_segs = non_merged_chunks.copy()
+
+            if len(all_segs)==0:
+                break
+
+            #
+            all_segs_inner = all_segs.copy()
+            seg_current = all_segs_inner[0]
+
+        #self.tracks_chunks[0] = final_merged_tracks
+        self.final_merged_times = final_merged_times
+        self.final_merged_locs = final_merged_locs
 
     #
     def memory_interpolate_tracks_spine(self):
@@ -556,9 +779,13 @@ class Track():
 
     def get_scores(self):
 
+
+        #
+        if self.track_type=='huddle':
+            return
+
         #
         fname_scores = self.fname_slp[:-4] + "_scores.npy"
-
         if os.path.exists(fname_scores) == False:
             if self.verbose:
                 print("... slp file loading...")
