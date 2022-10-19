@@ -630,6 +630,25 @@ class Track():
         self.final_merged_times = final_merged_times
         self.final_merged_locs = final_merged_locs
 
+    def save_updated_huddle_tracks(self):
+
+        # make multi-huddle track
+        self.tracks_huddles = np.zeros((self.tracks_spine.shape[0],
+                                        len(self.final_merged_times),
+                                        2))*np.nan
+        # loop over all huddles
+        for k in range(len(self.final_merged_times)):
+            times = self.final_merged_times[k]
+            segs = self.final_merged_locs[k]
+
+            for time_chunk, seg_chunk in zip(times,segs):
+                t = np.arange(time_chunk[0], time_chunk[1],1)
+                self.tracks_huddles[t,k] = seg_chunk
+
+        np.save(self.fname_slp.replace('.slp','_multi_track_huddles.npy'),
+                                       self.tracks_huddles)
+
+
     #
     def memory_interpolate_tracks_spine(self):
 
