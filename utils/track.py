@@ -15,10 +15,12 @@ if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 
+import time
 import numpy as np
 import os
 import cv2
-from tqdm import tqdm, trange
+from tqdm.auto import tqdm, trange
+#from tqdm import tqdm, trange
 import sleap
 import h5py
 from scipy import signal
@@ -34,6 +36,9 @@ class Track():
 
         #
         self.verbose=False
+
+        #
+        self.recompute_spine_centres = False
 
         #
         self.fname_slp = fname_slp
@@ -196,13 +201,13 @@ class Track():
         '''
 
         #
-        for a in trange(self.tracks_spine.shape[1], desc='cleaning animal tracks'):
+        for a in range(self.tracks_spine.shape[1]):
             track_xy1 = self.tracks_spine[:,a].copy()
 
             ########################################
             ###########  Delete big jumps ##########
             ########################################
-            for k in range(1,track_xy1.shape[0]-1,1):
+            for k in trange(1,track_xy1.shape[0]-1,1, desc='setting big jumps to nans'):
                 if np.linalg.norm(track_xy1[k]-track_xy1[k-1])>max_jump_allowed:
                     track_xy1[k]=np.nan
 
@@ -219,7 +224,9 @@ class Track():
                 inside = False
 
             # interpolate between small bits
-            for k in range(1,track_xy1.shape[0]-1,1):
+            for k in trange(1,track_xy1.shape[0]-1,1,
+                            position=0, leave=True,
+                            desc='join segements that are close'):
                 if np.isnan(track_xy1[k,0]):
                     if inside:
                         inside=False
@@ -249,7 +256,9 @@ class Track():
                 inside = False
 
             # interpolate between small bits
-            for k in range(1,track_xy1.shape[0]-1,1):
+            for k in trange(1,track_xy1.shape[0]-1,1,
+                            position=0, leave=True,
+                            desc='interpolate betweensmall bits'):
                 if np.isnan(track_xy1[k,0]):
                     if inside:
                         inside=False
@@ -264,6 +273,7 @@ class Track():
             #
             self.tracks_spine[:,a] = track_xy1.copy()
 
+    #
     def fix_huddles(self,
                     max_jump_allowed = 50,              # maximum distance that a gerbil can travel in 1 frame
                     max_dist_to_join = 50,              # maximum distnace between 2 chunks that can safely be merged
@@ -296,6 +306,7 @@ class Track():
         # max_jump_allowed = 50              # maximum distance that a gerbil can travel in 1 frame
         # max_dist_to_join = 50              # maximum distnace between 2 chunks that can safely be merged
         # min_chunk_len = 5                  # minimum number of frames that a chunk has to survive for in order to be saved
+        print (" cleaning tracks spine")
         self.clean_tracks_spine(max_jump_allowed,
                                 max_dist_to_join,
                                 min_chunk_len)
@@ -309,15 +320,13 @@ class Track():
 
         # uses track_spines to break up all the data into continuous chunks
         self.max_jump_single_frame = 30  # max distance in pixels (?) that an animal can move in a single frame
-
-        print ("tracks spine: ", self.tracks_spine.shape)
-
         self.make_tracks_chunks_huddles()
 
         #############################################
         ########## RERUN TRACK CLEANUP ##############
         #############################################
         #
+        print (" cleaning tracks spine")
         self.clean_tracks_spine(max_jump_allowed,
                                 max_dist_to_join,
                                 min_chunk_len)
@@ -533,7 +542,7 @@ class Track():
         '''
 
         #self.clean_tracks_spine()
-
+        print ("running memory interpolation on huddles")
         #
         self.tracks_spine_fixed = self.tracks_spine_fixed.squeeze()
 
@@ -545,94 +554,125 @@ class Track():
         final_merged_locs = []
 
         # loop over all segs
-        while len(all_segs)>0:
+        print (" Total # of starting huddle segments: ", len(all_segs))
+        with tqdm(total=len(all_segs),
+                  position=0, leave=True,
+                  desc='Remaining inner segments to analyze') as pbar:
 
             #
-            seg_current = all_segs[0]
-
-            # remove the latest segment out
-            del all_segs[0]
-
-            #
-            all_segs_inner = all_segs.copy()
-
-            # grab the first segment and check against all other segments for distance
-            merged_times = []
-            merged_locs = []
-            merged_times.append(seg_current)
-            merged_locs.append(self.tracks_spine_fixed[seg_current[0]:seg_current[1]])
-
-            #
-            non_merged_chunks = []
-            while len(all_segs_inner)>0:
-
-                # pick the next segement in line
-                seg_next = all_segs_inner[0]
+            while len(all_segs)>0:
 
                 #
-                del all_segs_inner[0]
+                seg_current = all_segs[0]
 
-                if len(all_segs_inner)==0:
-                    non_merged_chunks.append(seg_next)
-                    break
-
-                # compute distance between last location of the first chunk
-                #   and first location of the following chunk
-                merged_locs_temp = np.vstack(merged_locs)
-                loc_current = self.tracks_spine_fixed[seg_next[0]]
+                # remove the latest segment out
+                del all_segs[0]
 
                 #
-                coords = (merged_locs_temp-loc_current).squeeze()
-                #print ("coords: ", coords.shape)
-                dist = np.min(np.array([np.linalg.norm(v) for v in coords]))
-
-                # compute time between last chunk and current chunk
-                time_diff =  seg_next[0] - seg_current[1]
-
-                # if close enough
-                if dist<=self.max_distance_huddle and time_diff <= self.max_time_to_join_huddle:
-
-                    ############# MERGE IN SPACE ##########
-                    # fill in missing space
-                    temp_locs = np.zeros((seg_next[0] - seg_current[1],2))+loc_current
-
-                    # add distance in between
-                    merged_locs.append(temp_locs)
-
-                    # add new segement locations
-                    merged_locs.append(self.tracks_spine_fixed[seg_next[0]:seg_next[1]].squeeze())
-
-                    ############### MERGE IN TIME #################
-                    # make missing time
-                    temp_times = [seg_current[1],seg_next[0]]
-
-                    # add time in between
-                    merged_times.append(temp_times)
-
-                    # add new segment
-                    merged_times.append(seg_next)
-
-                    seg_current = [seg_current[0], seg_next[1]]
+                pbar.set_description("Remaining segs to process "+ str(len(all_segs)))
 
                 #
-                else:
-                    #print (seg_current, " too far away ", seg_next, "dist: ", dist,
-                    #       self.tracks_spine_fixed[seg_current[1]],
-                    #       self.tracks_spine_fixed[seg_next[0]])
-                    non_merged_chunks.append(seg_next)
+                all_segs_inner = all_segs.copy()
 
-            #
-            huddle_duration = 0
-            for k in range(len(merged_times)):
-                huddle_duration+= merged_times[k][1] - merged_times[k][0]
+                # grab the first segment and check against all other segments for distance
+                merged_times = []
+                merged_locs = []
+                merged_times.append(seg_current)
+                merged_locs.append(self.tracks_spine_fixed[seg_current[0]:seg_current[1]])
 
-            if huddle_duration >= self.min_huddle_time:
-                final_merged_times.append(merged_times)
-                final_merged_locs.append(merged_locs)
+                #
+                non_merged_chunks = []
 
-            # on exit from while loop delete the first entry in the
-            #print (" non merged chunks: ", non_merged_chunks)
-            all_segs = non_merged_chunks.copy()
+                #
+                while len(all_segs_inner)>0:
+
+                    #
+                    #if len(all_segs_inner)%50==0:
+
+                    # pick the next segement in line
+                   # start = time.time()
+                    seg_next = all_segs_inner[0]
+                    #print ("step 1: ", time.time()-start)
+
+                    #
+                  #  start = time.time()
+                    del all_segs_inner[0]
+                   # print ("step 2: ", time.time()-start)
+                    #all_segs_inner = all_segs_inner[1:]
+
+                    #
+                    if len(all_segs_inner)==0:
+                        non_merged_chunks.append(seg_next)
+                        break
+
+                    # compute distance between last location of the first chunk
+                    #   and first location of the following chunk
+                    #start = time.time()
+                    merged_locs_temp = np.vstack(merged_locs)
+                    loc_current = self.tracks_spine_fixed[seg_next[0]]
+                   # print ("step 3: ", time.time()-start)
+
+                    #
+                    #start = time.time()
+                    coords = (merged_locs_temp-loc_current).squeeze()
+                    #print ("coords: ", coords.shape)
+                    #dist = np.min(np.array([np.linalg.norm(v) for v in coords]))
+                    dist = np.min(np.linalg.norm(coords,axis=1))
+
+
+                    #print ("step 4: ", time.time()-start)
+
+                    # compute time between last chunk and current chunk
+                    time_diff =  seg_next[0] - seg_current[1]
+
+                    # if close enough
+                    if dist<=self.max_distance_huddle and time_diff <= self.max_time_to_join_huddle:
+
+                        #start = time.time()
+                        ############# MERGE IN SPACE ##########
+                        # fill in missing space
+                        temp_locs = np.zeros((seg_next[0] - seg_current[1],2))+loc_current
+
+                        # add distance in between
+                        merged_locs.append(temp_locs)
+
+                        # add new segement locations
+                        merged_locs.append(self.tracks_spine_fixed[seg_next[0]:seg_next[1]].squeeze())
+
+                        ############### MERGE IN TIME #################
+                        # make missing time
+                        temp_times = [seg_current[1],seg_next[0]]
+
+                        # add time in between
+                        merged_times.append(temp_times)
+
+                        # add new segment
+                        merged_times.append(seg_next)
+
+                        seg_current = [seg_current[0], seg_next[1]]
+                       # print ("step 5*************: ", time.time()-start)
+
+                    #
+                    else:
+                        #print (seg_current, " too far away ", seg_next, "dist: ", dist,
+                        #       self.tracks_spine_fixed[seg_current[1]],
+                        #       self.tracks_spine_fixed[seg_next[0]])
+                        non_merged_chunks.append(seg_next)
+
+                #
+                #start=time.time()
+                huddle_duration = 0
+                for k in range(len(merged_times)):
+                    huddle_duration+= merged_times[k][1] - merged_times[k][0]
+               # print ("step 6: ", time.time()-start)
+
+                if huddle_duration >= self.min_huddle_time:
+                    final_merged_times.append(merged_times)
+                    final_merged_locs.append(merged_locs)
+
+                # on exit from while loop delete the first entry in the
+                #print (" non merged chunks: ", non_merged_chunks)
+                all_segs = non_merged_chunks.copy()
 
         #self.tracks_chunks[0] = final_merged_tracks
         self.final_merged_times = final_merged_times
@@ -640,6 +680,12 @@ class Track():
 
     #
     def save_updated_huddle_tracks(self):
+
+
+        fname_out = self.fname_slp[:-4]+'_multi_track_huddles.npy'
+
+        #
+        print (" # of detected tracks/huddles: ", len(self.final_merged_times))
 
         # make multi-huddle track
         self.tracks_huddles = np.zeros((self.tracks_spine.shape[0],
@@ -654,8 +700,8 @@ class Track():
                 t = np.arange(time_chunk[0], time_chunk[1],1)
                 self.tracks_huddles[t,k] = seg_chunk
 
-        np.save(self.fname_slp.replace('.slp','_multi_track_huddles.npy'),
-                                       self.tracks_huddles)
+        print ("fname out: ", fname_out)
+        np.save(fname_out, self.tracks_huddles)
 
 
     #
