@@ -586,41 +586,26 @@ class Track():
                 #
                 while len(all_segs_inner)>0:
 
-                    #
-                    #if len(all_segs_inner)%50==0:
-
                     # pick the next segement in line
-                   # start = time.time()
                     seg_next = all_segs_inner[0]
-                    #print ("step 1: ", time.time()-start)
 
                     #
-                  #  start = time.time()
+                    #if len(all_segs_inner)==0:
+                    #    non_merged_chunks.append(seg_next)
+                    #    break
+
+                    #
                     del all_segs_inner[0]
-                   # print ("step 2: ", time.time()-start)
-                    #all_segs_inner = all_segs_inner[1:]
-
-                    #
-                    if len(all_segs_inner)==0:
-                        non_merged_chunks.append(seg_next)
-                        break
 
                     # compute distance between last location of the first chunk
                     #   and first location of the following chunk
-                    #start = time.time()
                     merged_locs_temp = np.vstack(merged_locs)
                     loc_current = self.tracks_spine_fixed[seg_next[0]]
-                   # print ("step 3: ", time.time()-start)
 
                     #
-                    #start = time.time()
                     coords = (merged_locs_temp-loc_current).squeeze()
-                    #print ("coords: ", coords.shape)
-                    #dist = np.min(np.array([np.linalg.norm(v) for v in coords]))
+                    # print ("Coords: ", coords.shape, " seg_next: ", seg_next)
                     dist = np.min(np.linalg.norm(coords,axis=1))
-
-
-                    #print ("step 4: ", time.time()-start)
 
                     # compute time between last chunk and current chunk
                     time_diff =  seg_next[0] - seg_current[1]
@@ -628,7 +613,6 @@ class Track():
                     # if close enough
                     if dist<=self.max_distance_huddle and time_diff <= self.max_time_to_join_huddle:
 
-                        #start = time.time()
                         ############# MERGE IN SPACE ##########
                         # fill in missing space
                         temp_locs = np.zeros((seg_next[0] - seg_current[1],2))+loc_current
@@ -650,29 +634,35 @@ class Track():
                         merged_times.append(seg_next)
 
                         seg_current = [seg_current[0], seg_next[1]]
-                       # print ("step 5*************: ", time.time()-start)
 
                     #
                     else:
-                        #print (seg_current, " too far away ", seg_next, "dist: ", dist,
-                        #       self.tracks_spine_fixed[seg_current[1]],
-                        #       self.tracks_spine_fixed[seg_next[0]])
                         non_merged_chunks.append(seg_next)
+                        if False:
+                            print (" segment too far: ", seg_next[0], seg_next[1],
+                                   self.tracks_spine_fixed[seg_next[0]:seg_next[1]].squeeze()[0],
+                                   self.tracks_spine_fixed[seg_next[0]:seg_next[1]].squeeze()[1])
+                            print (" min distance to previous segment: ", dist)
+                            print (" time to previous segment: ", time_diff)
 
                 #
-                #start=time.time()
                 huddle_duration = 0
                 for k in range(len(merged_times)):
                     huddle_duration+= merged_times[k][1] - merged_times[k][0]
-               # print ("step 6: ", time.time()-start)
 
                 if huddle_duration >= self.min_huddle_time:
                     final_merged_times.append(merged_times)
                     final_merged_locs.append(merged_locs)
 
                 # on exit from while loop delete the first entry in the
-                #print (" non merged chunks: ", non_merged_chunks)
+                print ('')
+                print ("seg_current: ", seg_current)
+                print ("length leftovers: ", len(non_merged_chunks),
+                       " non merged chunks: ", non_merged_chunks)
+                print ("#################")
                 all_segs = non_merged_chunks.copy()
+
+                #break
 
         #self.tracks_chunks[0] = final_merged_tracks
         self.final_merged_times = final_merged_times
