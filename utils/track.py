@@ -439,8 +439,8 @@ class Track():
                     start = k
                     end = None
                     in_segment=True
-
-        self.tracks_chunks.append([start, k-1])
+        if in_segment==True:
+            self.tracks_chunks.append([start, k-1])
 
             #
     def make_tracks_chunks(self):
@@ -615,7 +615,11 @@ class Track():
 
                         ############# MERGE IN SPACE ##########
                         # fill in missing space
-                        temp_locs = np.zeros((seg_next[0] - seg_current[1],2))+loc_current
+                        try:
+                            temp_locs = np.zeros((seg_next[0] - seg_current[1],2))+loc_current
+                        except:
+                            print ("broke here: seg_next: ", seg_next, " seg_current: ", seg_current)
+
 
                         # add distance in between
                         merged_locs.append(temp_locs)
@@ -655,11 +659,12 @@ class Track():
                     final_merged_locs.append(merged_locs)
 
                 # on exit from while loop delete the first entry in the
-                print ('')
-                print ("seg_current: ", seg_current)
-                print ("length leftovers: ", len(non_merged_chunks),
-                       " non merged chunks: ", non_merged_chunks)
-                print ("#################")
+                if False:
+                    print ('')
+                    print ("seg_current: ", seg_current)
+                    print ("length leftovers: ", len(non_merged_chunks),
+                           " non merged chunks: ", non_merged_chunks)
+                    print ("#################")
                 all_segs = non_merged_chunks.copy()
 
                 #break
