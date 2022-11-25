@@ -1363,3 +1363,18 @@ class Track():
             self.tracks_chunks = self.tracks_chunks_fixed
             self.tracks_spine = self.tracks_spine_fixed
 
+#
+def filter_trace(data,
+                fc=1):
+
+    from scipy import signal
+
+    fs = 25  # Sampling frequency
+
+    # Generate the time vector properly
+    #fc = 1  # Cut-off frequency of the filter
+    w = fc / (fs / 2) # Normalize the frequency
+    b, a = signal.butter(2, w, 'low')
+    data = signal.filtfilt(b, a, data)
+
+    return data

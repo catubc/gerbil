@@ -388,6 +388,86 @@ class Visualize():
         video_out.release()
         original_vid.release()
 
+
+
+    #
+    def make_annotated_video_single_track(self,
+                                        tracks1,
+                                        fname_video,
+                                        fname_video_out,
+                                        tag_loc,
+                                        start=None,
+                                        end=None,
+                                        scale = 1,
+                                        fps=25):
+
+        #
+        colors = [
+            (0, 0, 255),
+            (255, 0, 0),
+            (255, 255, 0),
+            (0, 128, 0)
+        ]
+
+        # select start/end of track
+        if start is None:
+            start = 0
+        if end is None:
+            end = tracks1.shape[0]
+
+        # load and videos
+        video_name = fname_video
+        fname_out = (video_name[:-4] + '_' + str(start) + "_" + str(end) + '_'+ fname_video_out+'.mp4')
+
+        # load original vid
+        original_vid = cv2.VideoCapture(video_name)
+
+        # video out settings
+        width = int(original_vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(original_vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print ("width, height: ", width, height)
+        size_vid = np.array([width, height])
+
+        #
+        fourcc = cv2.VideoWriter_fourcc('M', 'P', 'E', 'G')
+        video_out = cv2.VideoWriter(fname_out,
+                                    fourcc,
+                                    fps,
+                                    (width//scale, height//scale),
+                                    True)
+
+        #
+        original_vid.set(cv2.CAP_PROP_POS_FRAMES, start)
+
+        #
+        font = cv2.FONT_HERSHEY_PLAIN
+
+        # loop over frames
+        for n in trange(start, end, 1):
+
+            # for n in trange(start, 100, 1):
+            ret, frame_original = original_vid.read()
+
+            #
+            if np.isnan(tracks1[n])==False:
+                cv2.putText(frame_original,
+                            "000000000",
+                            #u'\u9632',
+                            (tag_loc[0], tag_loc[1]),
+                            font,
+                            5,
+                            (170, 255, 0),
+                            5)
+
+            frame_original = frame_original[::scale,::scale,:]
+
+            video_out.write(frame_original)
+
+        video_out.release()
+        original_vid.release()
+
+
+
     #
     def draw_locs(self,
                   n,
