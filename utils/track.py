@@ -1378,3 +1378,97 @@ def filter_trace(data,
     data = signal.filtfilt(b, a, data)
 
     return data
+
+
+
+#
+def detect_id_switch2(tracks,
+                     animal_id,
+                     max_n_nans=0):
+    #
+    other_animal_ids = np.int32(np.delete(np.arange(6), animal_id))
+
+    # select animal_id track
+    track = tracks[:, animal_id]
+
+    # calculate the feature-wise distance between current frame and next frame
+    ctr = 0
+    frame_ids = []
+    corner = 300
+    for k in trange(tracks.shape[0] - 1, desc='finding id switches in movie'):
+        feats0 = track[k]
+
+        for a in other_animal_ids:
+            feats1 = tracks[k + 1, a]
+
+            #
+            dists = np.linalg.norm(feats1 - feats0, axis=1)
+
+            #
+            med = np.nanmedian(dists)
+
+            #
+            if med < 15:
+                #
+                n = np.count_nonzero(np.isnan(dists))
+                # if n<=(6-min_n_features):
+                if n == max_n_nans:
+                    # also skip switches in the huddle
+                    if np.nanmedian(feats0[:, 0]) > corner:
+                        if np.nanmedian(feats0[:, 1]) > corner:
+                            frame_ids.append([k, k + 1])
+
+                        ctr += 1
+                # else:
+                #    print ("n toolow: ", n)
+    print("found: ", len(frame_ids), " switches")
+    return frame_ids
+
+
+
+def make_slp(fname_slp):
+
+    labels = sleap.load_file(fname_slp)
+
+    labels.videos  # Use in ipython to print list of videos in the labels object
+    n_videos = len(labels.videos)
+
+    #
+    for video_idx in trange(n_videos):
+        #video_idx =   # Change this select the video of interest from the labels.video list
+        video = labels.videos[video_idx]
+        labeled_frames_from_video = labels.get(video)
+
+        # Loop through all labeled frames (from a specific video)
+        n_frames = 0
+        for ctr1, lf in enumerate(labeled_frames_from_video):
+
+            # Loop through all user instances in the current labeled frame
+            for ctr2, inst in enumerate(lf.user_instances):
+
+                #
+                remove_inst = False
+                points_array = inst.points_array  # Returns a (num_nodes, 2) np.recarray
+
+                # SQUARE EXCLUDE this checks for any features at all in the exclusion radius
+                if True:
+                    idx = np.where(np.isnan(points_array.sum(1))==False)[0]
+                    points_array = points_array[idx]
+
+                    # check the x and y locatoins
+                    idx1 = np.where(points_array[:,0]<huddle_block[0])[0]
+                    idx2 = np.where(points_array[:,1]<huddle_block[1])[0]
+
+                    # if any point is in both lists then it's in the huddle zone
+                    if set(idx1) & set(idx2):
+                        lf.instances.remove(inst)
+                        #
+                    #dist = np.linalg.norm(points_array-huddle_location, axis=1)
+                    #dist = np.min(dist)
+
+
+                #print ('')
+
+    # Save the modified slp
+    new_filename = fname[:-4]+"_deleted.slp"  # Use a different path from the current slp to be safe
+    labels.save_file(labels, new_filename)
