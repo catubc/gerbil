@@ -1382,7 +1382,7 @@ def filter_trace(data,
 
 
 #
-def detect_id_switch2(tracks,
+def detect_id_switch3(tracks,
                      animal_id,
                      max_n_nans=0):
     #
@@ -1407,7 +1407,7 @@ def detect_id_switch2(tracks,
             #
             med = np.nanmedian(dists)
 
-            #
+            # if the median distance is low
             if med < 15:
                 #
                 n = np.count_nonzero(np.isnan(dists))
@@ -1416,7 +1416,7 @@ def detect_id_switch2(tracks,
                     # also skip switches in the huddle
                     if np.nanmedian(feats0[:, 0]) > corner:
                         if np.nanmedian(feats0[:, 1]) > corner:
-                            frame_ids.append([k, k + 1])
+                            frame_ids.append([k, k + 1, animal_id, a])
 
                         ctr += 1
                 # else:
