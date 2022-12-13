@@ -3,6 +3,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib import gridspec
+import glob
 
 import scipy
 import scipy.spatial
@@ -15,12 +16,13 @@ if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 
+import parmap
 import time
 import numpy as np
 import os
 import cv2
 from tqdm.auto import tqdm, trange
-#from tqdm import tqdm, trange
+
 import sleap
 import h5py
 from scipy import signal
@@ -1559,7 +1561,7 @@ def make_deleted_slp_files(fnames_slp_list):
         labels_keep.save_file(labels_keep, new_slp_path)
         #sleap.Labels.save_file(labels_keep, new_slp_path[:-4]+"_2.slp")
 
-        print ("Done...")
+    print ("Done...")
 
 #
 def make_hybrid_slp(fnames_slp_list,
@@ -1574,13 +1576,16 @@ def make_hybrid_slp(fnames_slp_list,
     #
     slp_files = np.loadtxt(fnames_slp_list, dtype='str')
 
-    #
     n_frames = 0
     all_frames = []
     reference_tracks = {}
 
     first_labels = None
-    for slp_file in tqdm(slp_files):
+    for slp_file0 in slp_files:
+
+        # replace slp_file with the deleted version
+        slp_file = slp_file0[:-4]+"_deleted.slp"
+
         # Load saved labels.
         labels = sleap.load_file(slp_file, match_to=first_labels)
         if first_labels is None:
@@ -1610,6 +1615,48 @@ def make_hybrid_slp(fnames_slp_list,
         n_frames += len(new_frames)
 
     merged_labels = sleap.Labels(all_frames)
+
+
+
+    #
+    # #
+    # n_frames = 0
+    # all_frames = []
+    # reference_tracks = {}
+    #
+    # first_labels = None
+    # for slp_file in tqdm(slp_files):
+    #
+    #     # Load saved labels.
+    #     labels = sleap.load_file(slp_file, match_to=first_labels)
+    #     if first_labels is None:
+    #         first_labels = labels
+    #
+    #     new_frames = []
+    #     for i, lf in enumerate(labels):
+    #
+    #         # Update reference to merged video.
+    #         lf.video = merged_video
+    #
+    #         # Update frame index to the frame number within the merged video.
+    #         lf.frame_idx = n_frames + i
+    #
+    #         # Update the track reference to use the reference tracks to prevent duplication.
+    #         for instance in lf:
+    #             if instance.track is not None:
+    #                 if instance.track.name in reference_tracks:
+    #                     instance.track = reference_tracks[instance.track.name]
+    #                 else:
+    #                     reference_tracks[instance.track.name] = instance.track
+    #
+    #         # Append the labeled frame to the list of frames we're keeping from these labels.
+    #         new_frames.append(lf)
+    #
+    #     all_frames.extend(new_frames)
+    #     n_frames += len(new_frames)
+    #     #break
+
+    #merged_labels = sleap.Labels(all_frames)
     merged_labels.save(fname_hybrid_slp)
 
     print("DONE...")
@@ -1645,7 +1692,7 @@ def make_hybrid_video(fnames_slp_list):
     # fourcc = cv2.VideoWriter_fourcc('p', 'n', 'g', '')
 
     # load videos
-    fname_out = fnames_slp_list[:-4] + '_hybrid.mp4'
+    fname_out = os.path.split(fnames_slp_list)[0] + '/hybrid.mp4'
     fname_out_cropped = fname_out[:-4] + "_cropped.mp4"
     fname_out_annotated = fname_out[:-4] + "_annotated.mp4"
     fname_out_annotated_cropped = fname_out[:-4] + "_annotated_cropped.mp4"
