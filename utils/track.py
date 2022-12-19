@@ -597,6 +597,13 @@ class Track():
                     #
                     del all_segs_inner[0]
 
+                    # this deals with a bug of the last segment being the same frame 2x [last_frame, last_frame]
+                    if seg_next[0]==seg_next[1]:
+                        if len(all_segs_inner)==0:
+                            break
+                        else:
+                            continue
+
                     # compute distance between last location of the first chunk
                     #   and first location of the following chunk
                     merged_locs_temp = np.vstack(merged_locs)
@@ -613,10 +620,15 @@ class Track():
                         # here we try to find shortest distance between existing huddle and any point
                         #  in hte new huddle seg;
                         # - alternative option is to take mean of new huddle seg
-                        diff = mean_previous-self.tracks_spine_fixed[seg_next[0]:seg_next[1]]
-                        #print ("diff : ", diff.shape)
-                        dist = np.min(np.linalg.norm(diff, axis=1))
-                        #print ("dist: ", dist)
+                        try:
+                            diff = mean_previous-self.tracks_spine_fixed[seg_next[0]:seg_next[1]]
+                            dist = np.min(np.linalg.norm(diff, axis=1))
+                        except:
+                            print ("seg_next: ", seg_next)
+                            print ("merged_locs_temp: ", merged_locs_temp)
+                            print ("mean_previous: ", mean_previous)
+                            print ("dist: ", dist)
+                            print ("diff : ", diff.shape)
 
                     # compute time between last chunk and current chunk
                     time_diff =  seg_next[0] - seg_current[1]
