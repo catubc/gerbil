@@ -1500,6 +1500,102 @@ def find_id_switches(fnames_slp_list):
 
 
 
+def make_deleted_slp_files_human_labels(fname_slp):
+
+    #
+    names = ['female','male','pup1','pup2','pup3','pup4','none']
+
+    #fname = "/media/cat/256GB/dan/testing_track_cleanup_code/cohort2_night_1000/videos/cohort2_night.1000.slp"
+    labels = sleap.load_file(fname_slp)
+
+    labels.videos  # Use in ipython to print list of videos in the labels object
+    n_videos = len(labels.videos)
+
+    #
+    merged_video = sleap.load_video('/home/cat/data/dan/merge_hybrid_slp/movie_hybrid.mp4')
+
+
+    n_all = 0
+    for video_idx in range(n_videos):
+
+        # Change this select the video of interest from the labels.video list
+        video = labels.videos[video_idx]
+        labeled_frames_from_video = labels.get(video)
+
+        print ("# of labeled frames: ", len(labeled_frames_from_video))
+
+        # Find indices of labeled frames to keep, note these are the indices of the `LabeledFrame`s in the labels.labeled_frames list
+        # lf_indices = search_frames[:,0] #[0, 2, 7, 101]  # Replace with list of labeled frame indices (NOT the same as video indices)
+       # lf_indices = all_  # [0, 2, 7, 101]  # Replace with list of labeled frame indices (NOT the same as video indices)
+        lf_indices = np.arange(len(labeled_frames_from_video))
+
+        # Create a new `Labels` object containing only the matched `LabeledFrame`s
+        labels_keep = labels.extract(lf_indices, copy=True)
+
+        # Loop through matched `LabeledFrame`s
+        ctr = 0
+        new_frames = []
+        for i, lf in enumerate(labels_keep.labeled_frames):
+
+            #
+            lf.video = merged_video
+            ctr_del = 0
+            for inst_idx, inst in enumerate(lf.user_instances):
+
+
+                new_frames = []
+                for i, lf in enumerate(labels):
+
+                    # Update reference to merged video.
+                    lf.video = merged_video
+
+                    # Update frame index to the frame number within the merged video.
+                    lf.frame_idx = n_frames + i
+
+                    # Update the track reference to use the reference tracks to prevent duplication.
+                    for instance in lf:
+                        if instance.track is not None:
+                            if instance.track.name in reference_tracks:
+                                instance.track = reference_tracks[instance.track.name]
+                            else:
+                                reference_tracks[instance.track.name] = instance.track
+
+                    # Append the labeled frame to the list of frames we're keeping from these labels.
+                    new_frames.append(lf)
+
+                all_frames.extend(new_frames)
+                n_frames += len(new_frames)
+
+            merged_labels = sleap.Labels(all_frames)
+
+            # save stuff
+            merged_labels.save(fname_hybrid_slp)
+
+
+
+
+            # get the predicted name
+            # print ("instd idx: ", inst_idx)
+            #name_predicted = lf.predicted_instances[inst_idx + ctr_del].track.name
+            name_labeled = lf.user_instances[inst_idx + ctr_del].track.name
+            print ("name labeled: ", name_labeled)
+
+            #  see if it matches the track to keep name
+            if name_predicted != track_to_keep:
+                lf.instances.remove(inst)
+
+                ctr_del -= 1
+        ctr += 1
+
+    # Save new slp
+    ##new_slp_path = fname[:-4] + "_deleted.slp"
+    #labels_keep.save_file(labels_keep, new_slp_path)
+    # sleap.Labels.save_file(labels_keep, new_slp_path[:-4]+"_2.slp")
+
+    print ("Done...")
+
+
+
 def make_deleted_slp_files(fnames_slp_list):
 
     names = ['female','male','pup1','pup2','pup3','pup4','none']
@@ -1628,47 +1724,7 @@ def make_hybrid_slp(fnames_slp_list,
 
     merged_labels = sleap.Labels(all_frames)
 
-
-
-    #
-    # #
-    # n_frames = 0
-    # all_frames = []
-    # reference_tracks = {}
-    #
-    # first_labels = None
-    # for slp_file in tqdm(slp_files):
-    #
-    #     # Load saved labels.
-    #     labels = sleap.load_file(slp_file, match_to=first_labels)
-    #     if first_labels is None:
-    #         first_labels = labels
-    #
-    #     new_frames = []
-    #     for i, lf in enumerate(labels):
-    #
-    #         # Update reference to merged video.
-    #         lf.video = merged_video
-    #
-    #         # Update frame index to the frame number within the merged video.
-    #         lf.frame_idx = n_frames + i
-    #
-    #         # Update the track reference to use the reference tracks to prevent duplication.
-    #         for instance in lf:
-    #             if instance.track is not None:
-    #                 if instance.track.name in reference_tracks:
-    #                     instance.track = reference_tracks[instance.track.name]
-    #                 else:
-    #                     reference_tracks[instance.track.name] = instance.track
-    #
-    #         # Append the labeled frame to the list of frames we're keeping from these labels.
-    #         new_frames.append(lf)
-    #
-    #     all_frames.extend(new_frames)
-    #     n_frames += len(new_frames)
-    #     #break
-
-    #merged_labels = sleap.Labels(all_frames)
+    # save stuff
     merged_labels.save(fname_hybrid_slp)
 
     print("DONE...")
@@ -1857,11 +1913,138 @@ def make_hybrid_video(fnames_slp_list):
     video_out_cropped.release()
     if False:
         video_out.release()
-        video_out_annotated.release()
+        video_out_annotated.relea
+        se()
         video_out_annotated_cropped.release()
 
     #
     print("DONE...")
+
+#
+
+
+def make_human_label_only_video(idxs,
+                                  fnames_videos):
+    ''' Function makes a hybrid video from a list of video names and frame indexes.
+        This video accompanies the compressed .slp file made that contains only human labeled
+        frames.
+
+    '''
+
+    #
+    root_dir = os.path.split(fnames_videos[0])[0] + '/'
+
+    # make new video video settings
+    size_vid = np.int32(np.array([900, 700]))
+    fps_out = 1
+    dot_size = 4
+    thickness = -1
+    window = 100
+    fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # fourcc = cv2.VideoWriter_fourcc(*'X264')
+    # #fourcc = cv2.VideoWriter_fourcc(*args["codec"])
+    # fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    # fourcc = cv2.VideoWriter_fourcc('p', 'n', 'g', '')
+
+    # load videos
+    fname_out = root_dir + '/hybrid.avi'
+
+    #
+    print("Fname hybrid movie: ", fname_out)
+
+    # make new video video settings
+    size_vid = np.int32(np.array([900, 700]))
+    fps_out = 1
+
+    #
+    video_out = cv2.VideoWriter(fname_out,
+                                fourcc,
+                                fps_out,
+                                (size_vid[0], size_vid[1]),
+                                True)
+
+    # loop over each slp file
+    ctr = 0
+    for idx, fname_video in tqdm(zip(idxs, fnames_videos)):
+        # load current vid
+        original_vid = cv2.VideoCapture(fname_video)
+        original_vid.set(cv2.CAP_PROP_POS_FRAMES, idx)
+
+        #
+        ret, img_out = original_vid.read()
+
+        #
+        video_out.write(img_out)
+
+        # fname_video_old = fname_video
+        original_vid.release()
+
+        ctr += 1
+
+    video_out.release()
+
+    print("done...")
+
+
+#
+def make_human_label_only_slp(fname_merged_video,
+                    fname_slp):
+    ''' This function reduces an .slp file containing human labels and other frames
+        to a much shroter file containing only human labeled frames.
+        It also saves the frame indexes and the video names so that the required hybrid.avi file
+        can also be made to match the shorter .slp file
+
+    '''
+
+    #
+    merged_video = sleap.load_video(fname_merged_video)
+    print (merged_video)
+
+    # Load saved labels.
+    first_labels = None
+
+    labels = sleap.load_file(fname_slp)
+    print("Labels: ", labels)
+
+    # loop over
+    new_frames = []
+    frames_idx = []
+    fnames = []
+    ctr1 = 0
+    for lf in labels:
+
+        # Catalin added
+        if lf.has_user_instances == False:
+            continue
+
+        # save indexes in order to make the hybrid videos
+        frames_idx.append(lf.frame_idx)
+        fnames.append(lf.video.backend.filename)
+
+        # Update reference to merged video.
+        lf.video = merged_video
+        lf.video.backend.filename = fname_merged_video
+
+        # Update frame index to the frame number within the merged video.
+        lf.frame_idx = ctr1
+
+        # Append the labeled frame to the list of frames we're keeping from these labels.
+        new_frames.append(lf)
+
+        #
+        ctr1 += 1
+
+    # format labels and save them
+    merged_labels = sleap.Labels(new_frames)
+    merged_labels.save(os.path.split(fname_merged_video)[0] + '/hybrid.slp')
+
+    # save indexes and video names to make hybrid video
+    np.save(os.path.split(fname_merged_video)[0] + '/hybrid_frames_idx.npy', frames_idx)
+    np.save(os.path.split(fname_merged_video)[0] + '/hybrid_fnames.npy', fnames)
+
+    #
+    print("...done...")
 
 
 #
