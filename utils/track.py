@@ -1816,6 +1816,8 @@ def make_hybrid_video(fnames_slp_list):
         idx = fname_slp.find("compressed")
         # print ("idx: ", idx)
 
+        print (fname_slp[:idx] + "*cropped*.mp4")
+
         fname_movie = glob.glob(fname_slp[:idx] + "*cropped*.mp4")[0]
         print("fname found: ", fname_movie)
 
