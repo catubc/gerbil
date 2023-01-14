@@ -1499,6 +1499,63 @@ def find_id_switches(fnames_slp_list):
             np.save(fname_out, all_frames)
 
 
+def find_id_switches_single_file(fname_slp,
+                                 fname_vid,
+                                 overwrite_flag = False):
+
+    #
+    animal_ids = np.arange(6)
+
+    #
+    fname_out = fname_vid[:-4] + "_all_frames_with_switches.npy"
+
+    #
+    if overwrite_flag == True or os.path.exists(fname_out) == False:
+
+        #
+        track = Track(fname_slp)
+        track.track_type = 'features'
+        track.use_dynamic_centroid = True  # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
+        track.load_tracks()
+
+        #### FIND ALL ID SWITCHES IN MOVIE ####
+        all_frames = []
+
+        if False:
+            for animal_id in animal_ids:
+                # for animal_id in [2]:
+                frame_ids = detect_id_switch3(track.tracks,
+                                              animal_id)
+                if len(frame_ids) > 0:
+                    all_frames.append(frame_ids)
+        else:
+
+            res = parmap.map(detect_id_switch_parallel,
+                             animal_ids,
+                             track.tracks)
+            all_frames = []
+            for r in res:
+                if len(r) > 0:
+                    all_frames.append(r)
+
+                    #
+        if len(all_frames)>0:
+            all_frames = np.vstack(all_frames)
+            # print ("all frames: ", all_frames.shape)
+
+            idx = np.argsort(all_frames[:, 0])
+            all_frames = all_frames[idx]
+        else:
+            all_frames = np.zeros(0)
+
+        #
+        print("filename completed: ", fname_slp)
+        print("all frames: ", all_frames.shape)
+
+        #
+        np.save(fname_out, all_frames)
+
+
 
 def make_deleted_slp_files_human_labels(fname_slp):
 
@@ -1595,7 +1652,7 @@ def make_deleted_slp_files_human_labels(fname_slp):
     print ("Done...")
 
 
-
+#
 def make_deleted_slp_files(fnames_slp_list):
 
     names = ['female','male','pup1','pup2','pup3','pup4','none']
@@ -1604,6 +1661,11 @@ def make_deleted_slp_files(fnames_slp_list):
 
     #
     for fname_slp in tqdm(fnames_slp, desc='making deleted .slp file'):
+
+        fname_out = fname_slp[:-4]+"_deleted.slp"
+
+        if os.path.exists(fname_out):
+            continue
 
         # load all frames:
         search_frames = np.load(fname_slp[:-4] + '_all_frames_with_switches.npy')
@@ -1618,16 +1680,13 @@ def make_deleted_slp_files(fnames_slp_list):
             names_idx.append(search_frames[k,3])
 
         #
-        fname = fname_slp
-
-        #
         tracks_to_keep = []
         for idx in names_idx:
             #print (idx)
             tracks_to_keep.append(names[idx])
 
         #
-        labels = sleap.load_file(fname)
+        labels = sleap.load_file(fname_slp)
         n_videos = len(labels.videos)
 
         #
@@ -1665,11 +1724,70 @@ def make_deleted_slp_files(fnames_slp_list):
                 ctr+=1
 
         # Save new slp
-        new_slp_path = fname[:-4]+"_deleted.slp"
-        labels_keep.save_file(labels_keep, new_slp_path)
+        labels_keep.save_file(labels_keep, fname_out)
         #sleap.Labels.save_file(labels_keep, new_slp_path[:-4]+"_2.slp")
 
     print ("Done...")
+
+
+#
+def make_hybrid_slp_from_list(fnames_slp_list,
+                              fname_hybrid_video):
+    #
+    merged_video = sleap.load_video(fname_hybrid_video)
+
+    #
+    fname_hybrid_slp = fname_hybrid_video[:-4] + ".slp"
+
+    #
+    slp_files = np.loadtxt(fnames_slp_list, dtype='str')
+
+    n_frames = 0
+    all_frames = []
+    reference_tracks = {}
+
+    first_labels = None
+    for slp_file0 in slp_files:
+
+        # replace slp_file with the deleted version
+        slp_file = slp_file0[:-4]+"_deleted.slp"
+
+        # Load saved labels.
+        labels = sleap.load_file(slp_file, match_to=first_labels)
+        if first_labels is None:
+            first_labels = labels
+
+        new_frames = []
+        for i, lf in enumerate(labels):
+
+            # Update reference to merged video.
+            lf.video = merged_video
+
+            # Update frame index to the frame number within the merged video.
+            lf.frame_idx = n_frames + i
+
+            # Update the track reference to use the reference tracks to prevent duplication.
+            for instance in lf:
+                if instance.track is not None:
+                    if instance.track.name in reference_tracks:
+                        instance.track = reference_tracks[instance.track.name]
+                    else:
+                        reference_tracks[instance.track.name] = instance.track
+
+            # Append the labeled frame to the list of frames we're keeping from these labels.
+            new_frames.append(lf)
+
+        all_frames.extend(new_frames)
+        n_frames += len(new_frames)
+
+    merged_labels = sleap.Labels(all_frames)
+
+    # save stuff
+    merged_labels.save(fname_hybrid_slp)
+
+    print("DONE...")
+
+
 
 #
 def make_hybrid_slp(fnames_slp_list,
@@ -1923,6 +2041,117 @@ def make_hybrid_video(fnames_slp_list):
     print("DONE...")
 
 #
+
+
+
+#
+def make_hybrid_video_from_list(fnames_slp):
+
+    # make new video video settings
+    window = 100
+    # fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # #fourcc = cv2.VideoWriter_fourcc(*'X264')
+    # #fourcc = cv2.VideoWriter_fourcc(*args["codec"])
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    # fourcc = cv2.VideoWriter_fourcc('p', 'n', 'g', '')
+
+    # load videos
+    print (fnames_slp)
+    fname_out = os.path.split(fnames_slp[0])[0] + '/hybrid.mp4'
+    fname_out_cropped = fname_out[:-4] + "_cropped.mp4"
+
+    #
+    print("Fname hybrid movie: ", fname_out_cropped)
+
+    # make new video video settings
+    size_vid = np.int32(np.array([900, 700]))
+    fps_out = 1
+
+    #
+    video_out_cropped = cv2.VideoWriter(fname_out_cropped,
+                                        fourcc,
+                                        fps_out,
+                                        (size_vid[0], size_vid[1]),
+                                        True)
+
+    # loop over each slp file
+    for fname_slp in fnames_slp:
+
+        # load all frames:
+        all_frames = np.load(fname_slp[:-4] + '_all_frames_with_switches.npy')
+
+        # load movie name
+        idx = fname_slp.find("compressed")
+        print (fname_slp[:idx] + "*cropped*.mp4")
+
+        fname_movie = glob.glob(fname_slp[:idx] + "*cropped*.mp4")[0]
+        print("fname found: ", fname_movie)
+
+        ############################################
+        ############################################
+        ############################################
+        track = Track(fname_slp)
+        track.track_type = 'features'
+        track.use_dynamic_centroid = True  # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
+        track.load_tracks()
+
+        # load current vid
+        original_vid = cv2.VideoCapture(fname_movie)
+
+        # set frames to new ones
+        for frames in tqdm(all_frames, desc='adding frames to movies'):
+
+            if len(frames) == 0:
+                continue
+
+            #
+            animal_id = frames[2]
+
+            #
+            original_vid.set(cv2.CAP_PROP_POS_FRAMES, frames[0])
+
+            #
+            for z in range(2):
+
+                # find centre of animal black out surrounding area
+                feats = track.tracks[frames[0] + z]
+
+                #
+                if z == 0:
+                    feats_centre = np.nanmedian(feats[animal_id], 0)
+
+                    #
+                    min_x = int(max(feats_centre[0] - window, 0))
+                    max_x = int(min(feats_centre[0] + window, 900))
+                    min_y = int(max(feats_centre[1] - window, 0))
+                    max_y = int(min(feats_centre[1] + window, 700))
+
+                ret, img_out = original_vid.read()
+
+                ###################################
+                ########## REGULAR VIDS ###########
+                ###################################
+                # crop the image
+                img_out_cropped = img_out.copy()
+                img_out_cropped[:, :min_x] = 0
+                img_out_cropped[:, max_x:] = 0
+                img_out_cropped[:min_y] = 0
+                img_out_cropped[max_y:] = 0
+
+                video_out_cropped.write(img_out_cropped)
+
+                ###################################
+                ######### ANNOTATED VIDS ##########
+                ###################################
+
+    video_out_cropped.release()
+
+    #
+    print("DONE...")
+
+#
+
 
 
 def make_human_label_only_video(idxs,
