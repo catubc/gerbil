@@ -2337,8 +2337,10 @@ def detect_id_switch_parallel(animal_id,
         feats0 = track[k]
 
         for a in other_animal_ids:
-            feats1 = tracks[k + 1, a]
-
+            try:
+                feats1 = tracks[k + 1, a]
+            except:
+                continue
             #
             dists = np.linalg.norm(feats1 - feats0, axis=1)
 
