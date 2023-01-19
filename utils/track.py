@@ -2676,10 +2676,22 @@ class DatabaseLoader():
         all_frames = []
         reference_tracks = {}
 
-        for labels in slp_labels:
+        #
+        ctrl=0
+        for ctrv, labels in enumerate(slp_labels):
 
+            # start counter for id switch .slp
+            if ctrv==1:
+                ctrl=0
+
+            #
             new_frames = []
             for i, lf in enumerate(labels):
+
+                # increase counter during id switch editing and skip if required
+                ctrl += 1
+                if ctrv==1 and (ctrl % self.supsample != 0):
+                    continue
 
                 # Update reference to merged video.
                 lf.video = merged_video
@@ -2754,18 +2766,27 @@ class DatabaseLoader():
                                     True)
 
         # loop over each video file
-        ctr = 0
+        ctrl = 0
         #for idx, fname_video in tqdm(zip(idxs, fnames_videos)):
-        for fname_video in fnames:
+        for ctrv, fname_video in enumerate(fnames):
             print ("processing: ", fname_video)
-            # load current vid
+
+            # load either original labels or id switch videos
             original_vid = cv2.VideoCapture(fname_video)
-            #original_vid.set(cv2.CAP_PROP_POS_FRAMES, idx)
+
+            # start the counter for the id switch video
+            if ctrv==1:
+                ctrl=0
 
             while True:
-                #
+                ctrl+=1
                 ret, img_out = original_vid.read()
 
+                # skip every required frame
+                if ctrv==1 and (ctrl%self.subsample!=0):
+                    continue
+
+                # exit on end of video
                 if ret==False:
                     break
 
