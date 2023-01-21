@@ -2682,22 +2682,30 @@ class DatabaseLoader():
 
             # start counter for id switch .slp
             if ctrv==1:
-                ctrl=0
+                ctrl=-1
 
             #
             new_frames = []
+            ctri = 0
             for i, lf in enumerate(labels):
+                ctrl += 1
 
                 # increase counter during id switch editing and skip if required
-                ctrl += 1
-                if ctrv==1 and (ctrl % self.supsample != 0):
-                    continue
+                if ctrv==1:
+                    if (ctrl%self.subsample==0) or (ctrl%self.subsample==1):
+                        pass
+                    else:
+                        continue
+
+                #
+                if ctrv==1:
+                    print ("slp ctrl: ", ctrl)
 
                 # Update reference to merged video.
                 lf.video = merged_video
 
                 # Update frame index to the frame number within the merged video.
-                lf.frame_idx = n_frames + i
+                lf.frame_idx = n_frames + ctri
 
                 # # Update the track reference to use the reference tracks to prevent duplication.
                 for instance in lf:
@@ -2712,6 +2720,7 @@ class DatabaseLoader():
 
                 # Append the labeled frame to the list of frames we're keeping from these labels.
                 new_frames.append(lf)
+                ctri+=1
 
             all_frames.extend(new_frames)
             n_frames += len(new_frames)
@@ -2776,19 +2785,22 @@ class DatabaseLoader():
 
             # start the counter for the id switch video
             if ctrv==1:
-                ctrl=0
+                ctrl=-1
 
             while True:
                 ctrl+=1
                 ret, img_out = original_vid.read()
-
-                # skip every required frame
-                if ctrv==1 and (ctrl%self.subsample!=0):
-                    continue
-
                 # exit on end of video
                 if ret==False:
                     break
+
+                # skip every required frame
+                if ctrv==1:
+                    if (ctrl%self.subsample==0) or (ctrl%self.subsample==1):
+                        pass
+                    else:
+                        continue
+
 
                 #
                 video_out.write(img_out)
@@ -2796,7 +2808,7 @@ class DatabaseLoader():
             # fname_video_old = fname_video
             original_vid.release()
 
-            ctr += 1
+            #ctr += 1
 
         video_out.release()
 
