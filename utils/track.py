@@ -2547,6 +2547,8 @@ class DatabaseLoader():
 
     #
     def __init__(self, fname, network_type):
+	    
+        print ("reading excel spreasheet...")
         df = pd.read_excel(fname, engine='openpyxl')
         # print ("DF: ", df)
 
@@ -2567,10 +2569,12 @@ class DatabaseLoader():
         # parse
         fnames_slp = []
         fnames_vids = []
+        print (" parsing dataframe of size: ", len(self.df))
+        ctr=0
         for dd in self.df.iterrows():
 
             #
-            if dd[1]['NN Type']=="Day":
+            if dd[1]['NN Type']==self.network_type:
 
                 fname_vid = dd[1]['Filename']
                 fname_slp = dd[1]['Slp filename']
@@ -2580,6 +2584,10 @@ class DatabaseLoader():
                 fnames_vids.append(os.path.join(self.root_dir,
                                                 self.input_dir,
                                                 fname_vid))
+                                                
+            ctr+=1
+            if ctr>5000:
+                break
         #
         print ("\nrunning .slp preprocessing and id_switch detection ...")
         self.find_id_switches_parallel(fnames_slp,
@@ -2640,7 +2648,8 @@ class DatabaseLoader():
                                          self.fname_human_vid)
 
     def merge_slp_files(self):
-                # human slp file
+              
+        # human slp file
         fname_slp1 = self.fname_human_slp
 
         # id switch slp file
@@ -2651,7 +2660,6 @@ class DatabaseLoader():
 
         #
         merged_video = sleap.load_video(fname_hybrid_video)
-        print(merged_video)
 
         #
         fname_hybrid_slp = fname_hybrid_video[:-4] + ".slp"
@@ -2697,10 +2705,6 @@ class DatabaseLoader():
                     else:
                         continue
 
-                #
-                if ctrv==1:
-                    print ("slp ctrl: ", ctrl)
-
                 # Update reference to merged video.
                 lf.video = merged_video
 
@@ -2739,11 +2743,11 @@ class DatabaseLoader():
     def merge_human_and_id_switches(self):
 
         #
-        self.merge_slp_files()
-
-        #
         self.merge_video_files()
 
+        #
+        self.merge_slp_files()
+        
     #
     def merge_video_files(self):
 
@@ -2812,5 +2816,5 @@ class DatabaseLoader():
 
         video_out.release()
 
-        print("done...")
+        print("done merging video files...")
 
