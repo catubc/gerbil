@@ -136,9 +136,14 @@ class Track():
     def save_centroid(self):
 
         #print ("saving centroid")
+        text = ''
+        if self.fix_track_flag:
+            text = text + "_fixed"
+        if self.interpolate_flag:
+            text = text + "_interpolated"
 
-        fname_spine = self.fname_slp[:-4]+"_spine.npy"
-        np.save(fname_spine, self.tracks_spine)
+        self.fname_spine_saved = self.fname_slp[:-4]+"_spine"+text+".npy"
+        np.save(self.fname_spine_saved, self.tracks_spine)
 
     #
     def get_track_spine_centers(self):
