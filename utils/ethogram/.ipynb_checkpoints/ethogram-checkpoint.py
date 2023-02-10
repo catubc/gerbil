@@ -45,14 +45,17 @@ class Ethogram():
         self.root_dir = os.path.split(self.fname_slp)[0]
 
         #
-        self.fps = 25
+        self.fps = 24
 
         #
         self.rad_to_degree= 57.2958
 
         #
-        self.feature_ids = np.array([0,5,6,7,8,9])
+        #self.feature_ids = np.array([0,5,6,7,8,9])
 
+        self.feature_ids = np.array([1,2,3,0,5,6])
+
+    #
     def get_durations_single_frame(self, data):
 
         # find starts and ends from the non-nan Indexes
@@ -824,7 +827,6 @@ class Ethogram():
 
         print ("... DONE...")
 
-
     #
     def compute_discretized_and_histograms_continuous(self):
 
@@ -1241,3 +1243,93 @@ class Ethogram():
 
                 self.angles[n,a] = np.median(frame_angles)
 
+
+# 
+def make_random_data(n_days,
+                     n_partitions):
+    #
+    data = np.random.randint(0,200, size=(n_days*n_partitions,3)).astype('float32')
+    
+    # offset of data
+    data[0:10,2]=np.nan
+        
+    # 
+    data[-10:,2]=np.nan
+
+    # generate random set days and hours
+    for k in range(n_days):
+        for p in range(n_partitions):
+            data[k*n_partitions+p,0] = k+15
+            data[k*n_partitions+p,1] = p
+    
+    return data
+
+#
+def plot_ethogram_hourly(n_days, 
+                         n_partitions, 
+                         data):
+    
+    #
+    day = data[0][0]
+    start_day = day.copy()
+    print ("start day: ", day)
+
+    #
+    time = data[0][1]
+    print ("start time: ", time)
+    
+    #
+    temp = np.zeros(n_partitions)
+    
+    #
+    img=[]
+    while data.shape[0]>0:
+        
+        # grab the time
+        time = data[0][1]
+        
+        # grab the next value
+        temp[int(time)]=data[0][2]
+        #print ("day: ", day, "time: ", time, " value: ", data[0,2])
+    
+        # pop the stack
+        data = np.delete(data,0,axis=0)
+        
+        #
+        if data.shape[0]==0:
+            img.append(temp)
+            break
+    
+        # check to see if day changed
+        if data[0,0] != day:
+            
+            # apend the day to the image stack
+            img.append(temp)
+
+            # reset day number
+            day = data[0][0]
+            
+            # reset partition number
+            time = data[0][1]
+            
+            # reset the 
+            temp = temp*0
+            
+    img = np.array(img)[::-1]
+    
+    #
+    end_day = day
+    
+    #
+    plt.figure()
+    plt.imshow(img,
+              #aspect='auto',
+              interpolation='none',
+              extent=[0+0.5,n_partitions+0.5, start_day-0.5,end_day-0.5])
+    
+    #
+    plt.colorbar()
+    plt.ylabel("Post natal day")
+    plt.xlabel("Time of day")
+    plt.title("Behavior ethogram")
+    plt.show()

@@ -1243,3 +1243,96 @@ class Ethogram():
 
                 self.angles[n,a] = np.median(frame_angles)
 
+
+# 
+def make_random_data(n_days,
+                     n_partitions):
+    #
+    data = np.random.randint(0,200, size=(n_days*n_partitions,3)).astype('float32')
+    
+    # offset of data
+    data[0:10,2]=np.nan
+        
+    # 
+    data[-10:,2]=np.nan
+
+    # generate random set days and hours
+    for k in range(n_days):
+        for p in range(n_partitions):
+            data[k*n_partitions+p,0] = k+15
+            data[k*n_partitions+p,1] = p
+    
+    return data
+
+#
+def plot_ethogram_hourly(n_partitions,
+                         cohort,
+                         vmax):
+    
+    #
+    data = cohort.data.copy()
+    day = data[0][0]
+    start_day = day.copy()
+    print ("start day: ", day)
+
+    #
+    time = data[0][1]
+    print ("start time: ", time)
+    
+    #
+    temp = np.zeros(n_partitions)
+    
+    #
+    img=[]
+    while data.shape[0]>0:
+        
+        # grab the time
+        time = data[0][1]
+        
+        # grab the next value
+        temp[int(time)]=data[0][2]
+        #print ("day: ", day, "time: ", time, " value: ", data[0,2])
+    
+        # pop the stack
+        data = np.delete(data,0,axis=0)
+        
+        #
+        if data.shape[0]==0:
+            img.append(temp)
+            break
+    
+        # check to see if day changed
+        if data[0,0] != day:
+            
+            # apend the day to the image stack
+            img.append(temp)
+
+            # reset day number
+            day = data[0][0]
+            
+            # reset partition number
+            time = data[0][1]
+            
+            # reset the 
+            temp = temp*0
+            
+    img = np.array(img)[::-1]
+    
+    #
+    end_day = day
+    
+    #
+    plt.figure()
+    plt.imshow(img,
+              #aspect='auto',
+               aspect='auto',
+               vmax=vmax,
+              interpolation='none',
+              extent=[0+0.5,n_partitions+0.5, start_day-0.5,end_day-0.5])
+    
+    #
+    plt.colorbar(label=" % time proximal")
+    plt.ylabel("Post natal day")
+    plt.xlabel("Time of day")
+    plt.title("Behavior: "+cohort.behavior_name )
+    plt.show()

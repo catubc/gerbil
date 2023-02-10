@@ -67,13 +67,17 @@ class CohortProcessor():
             t.save_centroid()
 
 
-    def process_huddle_track(self, fname_slp):
+    def process_huddle_track(self, fname_slp,
+                             fix_track_flag,
+                             interpolate_flag):
 
 
         #fname = '/media/cat/256GB/dan/huddles/p26_huddles.npy'
 
         #
         t = track.Track(fname_slp)
+        t.fix_track_flag = fix_track_flag
+        t.interpolate_flag = interpolate_flag
 
         #############################################
         ############# RUN TRACK FIXER ###############
@@ -127,6 +131,8 @@ class CohortProcessor():
         if self.parallel:
             parmap.map(self.process_huddle_track,
                        fnames_slp,
+                       self.fix_track_flag,
+                       self.interpolate_flag,
                        pm_processes=self.n_cores,
                        pm_pbar = True)
         else:
@@ -185,6 +191,13 @@ class CohortProcessor():
         self.n_gerbils = df.loc[:,'# of Gerbils']
         #print ("# of gerbils: ", self.n_gerbils)
 
+        #
+        self.PDays = df.loc[:,'Dev Day']
+
+        #
+        self.Start_times = df.loc[:,'Start time']
+
+        #
         idx = np.where(self.n_gerbils==6)[0]
         print (" ... total # : ", idx.shape[0], " / ", self.n_gerbils.shape[0])
 
@@ -205,6 +218,62 @@ class CohortProcessor():
                *method_list,
                sep='\n  ')
 
+
+
+    def get_pairwise_interaction_time(self, a1, a2):
+
+        res=[]
+        for k in trange(0,991,1):
+            self.track_id = k
+            track = self.load_single_feature_spines()
+
+            # if track is missing, skip it
+            if track is None:
+                res.append(np.zeros((6,6))[a1,a2])
+                continue
+
+            #
+            self.symmetric_matrices=False
+            self.plotting=False
+            temp = self.compute_pairwise_interactions(track)
+
+            temp = temp[a1,a2]
+
+            res.append(temp)
+
+        res = np.array(res)
+        print ("res: ", res.shape)
+
+        self.res = res
+
+
+    def format_behavior(self):
+
+        #
+        self.data = []
+        for k in range(self.PDays.shape[0]):
+
+            PDay = self.PDays[k]
+            time = self.Start_times[k]
+            self.data.append([int(PDay[1:]), time.hour, self.res[k]])
+
+        #
+        self.data = np.vstack(self.data)
+        print (self.data)
+
+        # compute average per hour
+        self.data_ave = []
+        s = []
+        s.append(self.data[0,2])
+        for k in range(0,self.data.shape[0]-1,1):
+            if self.data[k,1]==self.data[k+1,1]:
+                s.append(self.data[k+1,2])
+            else:
+                temp = self.data[k]
+                temp[2] = np.mean(s)
+                self.data_ave.append(temp)
+                s=[]
+        self.data = np.vstack(self.data_ave)
 
     def list_recordings(self):
 
