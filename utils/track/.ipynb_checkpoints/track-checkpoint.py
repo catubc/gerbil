@@ -53,8 +53,6 @@ class Track():
 
     #
     def load_slp(self):
-		
-        print(self.fname_slp)
 
         self.slp = sleap.load_file(self.fname_slp)
 
@@ -137,10 +135,15 @@ class Track():
     #
     def save_centroid(self):
 
-        print ("saving centroid")
+        #print ("saving centroid")
+        text = ''
+        if self.fix_track_flag:
+            text = text + "_fixed"
+        if self.interpolate_flag:
+            text = text + "_interpolated"
 
-        fname_spine = self.fname_slp[:-4]+"_spine.npy"
-        np.save(fname_spine, self.tracks_spine)
+        self.fname_spine_saved = self.fname_slp[:-4]+"_spine"+text+".npy"
+        np.save(self.fname_spine_saved, self.tracks_spine)
 
     #
     def get_track_spine_centers(self):
@@ -197,12 +200,15 @@ class Track():
 
         ''' Method to fix the large jumps, short orphaned segments,
             and interpolate across short distances
+
             Input:
             - track array for a single animal: [n_time_steps, 2], where the 2 is for x-y locations
             - max_jump_allowed: maximum number of pixels (in euclidean distance) a track is allowed to jump before being split
             - max_dist_to_join: when joining orphaned tracks, the largest distacne allowed between 2 track bouts
             - min_chunk_len = shortest chunk allowed (this is applied at the end after joining all the chunks back
+
             Output: fixed track
+
         '''
 
         #
@@ -212,7 +218,8 @@ class Track():
             ########################################
             ###########  Delete big jumps ##########
             ########################################
-            for k in trange(1,track_xy1.shape[0]-1,1, desc='setting big jumps to nans'):
+            #for k in trange(1,track_xy1.shape[0]-1,1, desc='setting big jumps to nans'):
+            for k in range(1,track_xy1.shape[0]-1,1):
                 if np.linalg.norm(track_xy1[k]-track_xy1[k-1])>max_jump_allowed:
                     track_xy1[k]=np.nan
 
@@ -229,9 +236,10 @@ class Track():
                 inside = False
 
             # interpolate between small bits
-            for k in trange(1,track_xy1.shape[0]-1,1,
-                            position=0, leave=True,
-                            desc='join segements that are close'):
+            # for k in trange(1,track_xy1.shape[0]-1,1,
+            #                 position=0, leave=True,
+            #                 desc='join segements that are close'):
+            for k in range(1,track_xy1.shape[0]-1,1):
                 if np.isnan(track_xy1[k,0]):
                     if inside:
                         inside=False
@@ -261,9 +269,10 @@ class Track():
                 inside = False
 
             # interpolate between small bits
-            for k in trange(1,track_xy1.shape[0]-1,1,
-                            position=0, leave=True,
-                            desc='interpolate betweensmall bits'):
+            # for k in trange(1,track_xy1.shape[0]-1,1,
+            #                 position=0, leave=True,
+            #                 desc='interpolate betweensmall bits'):
+            for k in range(1,track_xy1.shape[0]-1,1):
                 if np.isnan(track_xy1[k,0]):
                     if inside:
                         inside=False
@@ -283,7 +292,8 @@ class Track():
                     max_jump_allowed = 50,              # maximum distance that a gerbil can travel in 1 frame
                     max_dist_to_join = 50,              # maximum distnace between 2 chunks that can safely be merged
                     min_chunk_len = 5):
-   #
+
+        #
         self.animal_ids = [0]
         self.track_type = 'huddle'
         self.tracks_names = ['huddle']
@@ -292,12 +302,11 @@ class Track():
         self.n_animals = 1     # number of animals
         self.filter_width = 10                      # this is the median filter width in frames; e.g. 10 ~=0.4 seconds
                                                      # higher values provide more stability, but less temporally precise locations
-
         # load the tracks
         self.use_dynamic_centroid = False
         self.load_tracks()
 
-        print ("spine tracks: ", self.tracks_spine.shape)
+        #print ("spine tracks: ", self.tracks_spine.shape)
         ####################################################
         ### OPTIONAL - MEDIAN FILTER ALL TRACKS ############
         ####################################################
@@ -311,7 +320,7 @@ class Track():
         # max_jump_allowed = 50              # maximum distance that a gerbil can travel in 1 frame
         # max_dist_to_join = 50              # maximum distnace between 2 chunks that can safely be merged
         # min_chunk_len = 5                  # minimum number of frames that a chunk has to survive for in order to be saved
-        print (" cleaning tracks spine")
+        #print (" cleaning tracks spine")
         self.clean_tracks_spine(max_jump_allowed,
                                 max_dist_to_join,
                                 min_chunk_len)
@@ -331,7 +340,7 @@ class Track():
         ########## RERUN TRACK CLEANUP ##############
         #############################################
         #
-        print (" cleaning tracks spine")
+        #print (" cleaning tracks spine")
         self.clean_tracks_spine(max_jump_allowed,
                                 max_dist_to_join,
                                 min_chunk_len)
@@ -420,7 +429,7 @@ class Track():
             Loop over the tcrs and check if jumps are too high to re-break track
         '''
 
-        print ("... Making tracks chunks...")
+        #print ("... Making tracks chunks...")
 
         # break distances that are very large over single jumps
         # join by time
@@ -434,7 +443,7 @@ class Track():
             start = 0
             end = None
 
-        for k in trange(1,track.shape[0],1):
+        for k in range(1,track.shape[0],1):
             if np.isnan(track[k,0])==True:
                 if in_segment==True:
                     self.tracks_chunks.append([start, k-1])
@@ -456,7 +465,7 @@ class Track():
             Loop over the tcrs and check if jumps are too high to re-break track
         '''
 
-        print ("... Making tracks chunks...")
+        #print ("... Making tracks chunks...")
 
         # break distances that are very large over single jumps
         # join by time
@@ -547,7 +556,7 @@ class Track():
         '''
 
         #self.clean_tracks_spine()
-        print ("running memory interpolation on huddles")
+        #print ("running memory interpolation on huddles")
         #
         self.tracks_spine_fixed = self.tracks_spine_fixed.squeeze()
 
@@ -559,12 +568,14 @@ class Track():
         final_merged_locs = []
 
         # loop over all segs
-        print (" Total # of starting huddle segments: ", len(all_segs))
-        with tqdm(total=len(all_segs),
-                  position=0, leave=True,
-                  desc='Remaining inner segments to analyze') as pbar:
+        #print (" Total # of starting huddle segments: ", len(all_segs))
+        #with tqdm(total=len(all_segs),
+        #          position=0, leave=True,
+        #          desc='Remaining inner segments to analyze') as pbar:
 
-            #
+        if True:
+
+                    #
             while len(all_segs)>0:
 
                 #
@@ -574,7 +585,7 @@ class Track():
                 del all_segs[0]
 
                 #
-                pbar.set_description("Remaining segs to process "+ str(len(all_segs)))
+                #pbar.set_description("Remaining segs to process "+ str(len(all_segs)))
 
                 #
                 all_segs_inner = all_segs.copy()
@@ -708,14 +719,14 @@ class Track():
         fname_out = self.fname_slp[:-4]+'_multi_track_huddles.npy'
 
         #
-        print (" # of detected tracks/huddles: ", len(self.final_merged_times))
+        #print (" # of detected tracks/huddles: ", len(self.final_merged_times))
 
         # make multi-huddle track
         self.tracks_huddles = np.zeros((self.tracks_spine.shape[0],
                                         len(self.final_merged_times),
                                         2))*np.nan
         # loop over all huddles
-        for k in trange(len(self.final_merged_times)):
+        for k in range(len(self.final_merged_times)):
             times = self.final_merged_times[k]
             segs = self.final_merged_locs[k]
 
@@ -723,7 +734,7 @@ class Track():
                 t = np.arange(time_chunk[0], time_chunk[1],1)
                 self.tracks_huddles[t,k] = seg_chunk
 
-        print ("fname out: ", fname_out)
+        #print ("fname out: ", fname_out)
         np.save(fname_out, self.tracks_huddles)
 
 
@@ -732,6 +743,7 @@ class Track():
 
         ''' Idea is to check for neighbouring bouts of movement if there has not been a lot of
             space movement, we can freeze the centroid at the last location (or middle point)
+
             - middle point could help actulaly to visualize ugly errors
         '''
 
@@ -889,7 +901,7 @@ class Track():
 
             #
             self.scores = np.zeros((len(self.slp), self.n_animals), 'float32') + np.nan
-            for n in trange(len(self.slp)):
+            for n in range(len(self.slp)):
                 for a in range(len(self.slp[n])):
                     name = self.slp[n][a].track.name
                     idx = self.tracks_names.index(name)
@@ -1007,6 +1019,7 @@ class Track():
         ''' Find distances between active animal chunk and other animals
             Notes: look for minimum distance to nearest
                 - do not change very long tracks, sleap likely has them right
+
         '''
         cost = np.zeros(self.n_animals, 'float32')+1E5
         chunk_ids_compare = np.zeros(self.n_animals, 'float32')+np.nan
@@ -1260,7 +1273,7 @@ class Track():
                    t_end=None):
 
         #
-        print ("... Fixing tracks...")
+        #print ("... Fixing tracks...")
 
         #
         if t==None or t_end==None:
@@ -1349,7 +1362,7 @@ class Track():
                 except:
 
                     if self.update_tracks:
-                        print ("UPDATING TRACKS")
+                       # print ("UPDATING TRACKS")
                         self.tracks_chunks = self.tracks_chunks_fixed
                         self.tracks_spine = self.tracks_spine_fixed
 
@@ -1493,7 +1506,7 @@ def find_id_switches(fnames_slp_list):
             all_frames = all_frames[idx]
 
             #
-            #print("filename completed: ", fname_slp)
+            print("filename completed: ", fname_slp)
             print("all frames: ", all_frames.shape)
 
             #
@@ -1552,17 +1565,13 @@ def find_id_switches_single_file(input,
                     all_frames.append(frame_ids)
         else:
 
-            try:
-                res = parmap.map(detect_id_switch_parallel,
+            res = parmap.map(detect_id_switch_parallel,
                              animal_ids,
                              track.tracks)
-                             
-                all_frames = []
-                for r in res:
-                    if len(r) > 0:
-                        all_frames.append(r)
-            except:
-                print(f"skipped {fname_slp}")
+            all_frames = []
+            for r in res:
+                if len(r) > 0:
+                    all_frames.append(r)
 
                     #
         if len(all_frames)>0:
@@ -1575,7 +1584,7 @@ def find_id_switches_single_file(input,
             all_frames = np.zeros(0)
 
         #
-        print("filename completed: ", fname_slp)
+        #print("filename completed: ", fname_slp)
         #print("all frames: ", all_frames.shape)
 
         #
@@ -1678,25 +1687,18 @@ def make_deleted_slp_files_human_labels(fname_slp):
     print ("Done...")
 
 
-def make_deleted_slp_files_parallel(fnames_slp, 
-									fnames_vids,
-                                    n_cores,
-                                    nn_type):
+def make_deleted_slp_files_parallel(fnames_slp, fnames_vids,
+                                    n_cores):
 
     in_ = list(zip(fnames_slp, fnames_vids))
 
-    if True:
-        parmap.map(make_deleted_slp_files, in_,
-					nn_type,
+    parmap.map(make_deleted_slp_files, in_,
                pm_pbar=True,
                pm_processes=n_cores)
 
-    else:
-        for in1 in in_:
-            make_deleted_slp_files(in1,
-							nn_type)
+
 #
-def make_deleted_slp_files(input, nn_type):
+def make_deleted_slp_files(input):
 
     fname_slp, fname_vid = input
 
@@ -1708,27 +1710,22 @@ def make_deleted_slp_files(input, nn_type):
         return
 
     # load all frames:
-    try:
-        search_frames = np.load(fname_vid[:-4] + '_all_frames_with_switches.npy')
+    search_frames = np.load(fname_vid[:-4] + '_all_frames_with_switches.npy')
 
-        # merge the frame pairs into each other so they all appear as a single sequence
-        all_ = []
-        names_idx = []
-        for k in range(len(search_frames)):
-            all_.append(search_frames[k,0])
-            all_.append(search_frames[k,1])
-            names_idx.append(search_frames[k,2])
-            names_idx.append(search_frames[k,3])
+    # merge the frame pairs into each other so they all appear as a single sequence
+    all_ = []
+    names_idx = []
+    for k in range(len(search_frames)):
+        all_.append(search_frames[k,0])
+        all_.append(search_frames[k,1])
+        names_idx.append(search_frames[k,2])
+        names_idx.append(search_frames[k,3])
 
-        #
-        tracks_to_keep = []
-        for idx in names_idx:
+    #
+    tracks_to_keep = []
+    for idx in names_idx:
         #print (idx)
-            tracks_to_keep.append(names[idx])
-
-    except:
-        print('not found')
-        return
+        tracks_to_keep.append(names[idx])
 
     #
     labels = sleap.load_file(fname_slp)
@@ -1910,7 +1907,7 @@ def make_hybrid_video(fnames_slp_list):
     animal_ids = np.arange(6)
 
     # make new video video settings
-    #size_vid = np.int32(np.array([900, 700]))
+    size_vid = np.int32(np.array([900, 700]))
     fps_out = 1
     dot_size = 4
     thickness = -1
@@ -1931,28 +1928,8 @@ def make_hybrid_video(fnames_slp_list):
     #
     print("Fname hybrid movie: ", fname_out_cropped)
 
-
     # make new video video settings
-
-    # load all frames:
-    fname_slp = fnames_slp[0] 
-    
-    # load movie name
-    idx = fname_slp.find("compressed")  # print ("idx: ", i)
-
-    fname_movie = glob.glob(fname_slp[:idx] + "*cropped*.mp4")[0]
-    print("fname found: ", fname_movie)
-    original_vid = cv2.VideoCapture(fname_movie)
-
-    if original_vid.isOpened(): 
-        # get vcap property 
-        width  = original_vid.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)   # float `width`
-        height = original_vid.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)  # float `height`
-
-    original_vid.release()
-    size_vid = np.int32(np.array([width, height]))
-    
-    #
+    size_vid = np.int32(np.array([900, 700]))
     fps_out = 1
     dot_size = int(6)
     thickness = -1
@@ -2014,6 +1991,8 @@ def make_hybrid_video(fnames_slp_list):
 
         # load current vid
         original_vid = cv2.VideoCapture(fname_movie)
+        width = original_vid.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = original_vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
         # set frames to new ones
         ctr = 0
@@ -2127,25 +2106,8 @@ def make_hybrid_video_from_list(fnames_slp, fnames_vids, fname_out_cropped):
     #
     #print("   fname output hybrid movie: ", fname_out_cropped)
 
-
-    idx = fnames_slp[0].find("compressed")
-    #print (fname_slp[:idx] + "*cropped*.mp4")
-
-    fname_movie = glob.glob(fnames_slp[0][:idx] + "*cropped*.mp4")[0]
-    
-    original_vid = cv2.VideoCapture(fname_movie)
-
-    if original_vid.isOpened(): 
-        # get vcap property 
-        #width  = original_vid.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH)   # float `width`
-        #height = original_vid.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)  # float `height`
-        width  = original_vid.get(3) #cv2.cv.CV_CAP_PROP_FRAME_WIDTH)   # float `width`
-        height = original_vid.get(4)# cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)  # float `height`
-
-    original_vid.release()
-    size_vid = np.int32(np.array([width, height]))
-    
-    #size_vid = np.int32(np.array([900, 700]))
+    # make new video video settings
+    size_vid = np.int32(np.array([900, 700]))
     fps_out = 1
 
     #
@@ -2156,24 +2118,17 @@ def make_hybrid_video_from_list(fnames_slp, fnames_vids, fname_out_cropped):
                                         True)
 
     # loop over each slp file
-    ctr=0
     for fname_slp, fname_vid in tqdm(list(zip(fnames_slp, fnames_vids)), desc='making hybrid movie'):
 
         # load all frames:
-        try:
-            all_frames = np.load(fname_vid[:-4] + '_all_frames_with_switches.npy')
-        except:
-            print('not found')
-            continue
-        ##if ctr   >10:
-        #    break
-        #ctr+=1
-        
+        all_frames = np.load(fname_vid[:-4] + '_all_frames_with_switches.npy')
 
         # load movie name
         idx = fname_slp.find("compressed")
-        fname_movie = glob.glob(fname_slp[:idx] + "*cropped*.mp4")[0]
+        #print (fname_slp[:idx] + "*cropped*.mp4")
 
+        fname_movie = glob.glob(fname_slp[:idx] + "*cropped*.mp4")[0]
+       # print("fname found: ", fname_movie)
 
         ############################################
         ############################################
@@ -2211,9 +2166,9 @@ def make_hybrid_video_from_list(fnames_slp, fnames_vids, fname_out_cropped):
 
                     #
                     min_x = int(max(feats_centre[0] - window, 0))
-                    max_x = int(min(feats_centre[0] + window, width))
+                    max_x = int(min(feats_centre[0] + window, 900))
                     min_y = int(max(feats_centre[1] - window, 0))
-                    max_y = int(min(feats_centre[1] + window, height))
+                    max_y = int(min(feats_centre[1] + window, 700))
 
                 ret, img_out = original_vid.read()
 
@@ -2240,16 +2195,12 @@ def make_hybrid_video_from_list(fnames_slp, fnames_vids, fname_out_cropped):
 #
 def make_human_label_only_video(idxs,
                                 fnames_videos,
-                                fname_out = None,
-                                nn_type='NONE'):
+                                fname_out = None):
     ''' Function makes a hybrid video from a list of video names and frame indexes.
         This video accompanies the compressed .slp file made that contains only human labeled
         frames.
-    '''
-	
-	#
-    print (" ... making human only label video...")
 
+    '''
 
     if os.path.exists(fname_out):
         print ("   video already exists ... exiting")
@@ -2271,18 +2222,7 @@ def make_human_label_only_video(idxs,
     print ("Fname hybrid movie: ", fname_out)
 
     # make new video video settings
-    # load either original labels or id switch videos
-    original_vid = cv2.VideoCapture(fnames_videos[0])
-    
-     
-    if original_vid.isOpened(): 
-        # get vcap property 
-        width  = original_vid.get(3) # `width`
-        height = original_vid.get(4) #.cv.CV_CAP_PROP_FRAME_HEIGHT)  # float `height`
-
-    original_vid.release()
-		
-    size_vid = np.int32(np.array([width, height]))
+    size_vid = np.int32(np.array([900, 700]))
     fps_out = 1
 
     #
@@ -2319,17 +2259,14 @@ def make_human_label_only_video(idxs,
 #
 def make_human_label_only_slp(fname_merged_video,
                               fname_slp,
-                              human_slp_dir,
-                              nn_type):
+                              human_slp_dir):
 
     ''' This function reduces an .slp file containing human labels and other frames
         to a much shroter file containing only human labeled frames.
         It also saves the frame indexes and the video names so that the required hybrid.avi file
         can also be made to match the shorter .slp file
+
     '''
-    
-    #
-    print ("... making human label only slp...")
 
     #
     merged_video = sleap.load_video(fname_merged_video)
@@ -2383,17 +2320,12 @@ def make_human_label_only_slp(fname_merged_video,
 
     # format labels and save them
     merged_labels = sleap.Labels(new_frames)
-    fname_slp_out = os.path.join(os.path.split(fname_merged_video)[0],
-								nn_type+ '_human_labels.slp')
+    fname_slp_out = os.path.split(fname_merged_video)[0] + '/human_labels.slp'
     merged_labels.save(fname_slp_out)
 
     # save indexes and video names to make hybrid video
-    np.save(os.path.join(os.path.split(fname_merged_video)[0],
-							nn_type+ '_human_frames_idx.npy'), frames_idx)
-    
-    #
-    np.save(os.path.join(os.path.split(fname_merged_video)[0],
-							nn_type+ '_human_fnames.npy'), fnames)
+    np.save(os.path.split(fname_merged_video)[0] + '/human_frames_idx.npy', frames_idx)
+    np.save(os.path.split(fname_merged_video)[0] + '/human_fnames.npy', fnames)
 
 
     return fname_slp_out
@@ -2405,10 +2337,7 @@ def detect_id_switch_parallel(animal_id,
     other_animal_ids = np.int32(np.delete(np.arange(6), animal_id))
 
     # select animal_id track
-    try:
-        track = tracks[:, animal_id]
-    except:
-        print(f"skipped {fname_slp}")
+    track = tracks[:, animal_id]
 
     # calculate the feature-wise distance between current frame and next frame
     ctr = 0
@@ -2421,7 +2350,7 @@ def detect_id_switch_parallel(animal_id,
             try:
                 feats1 = tracks[k + 1, a]
             except:
-                print(f"skipped {fname_slp}")
+                continue
             #
             dists = np.linalg.norm(feats1 - feats0, axis=1)
 
@@ -2628,6 +2557,8 @@ class DatabaseLoader():
 
     #
     def __init__(self, fname, network_type):
+	    
+        print ("reading excel spreasheet...")
         df = pd.read_excel(fname, engine='openpyxl')
         # print ("DF: ", df)
 
@@ -2648,49 +2579,41 @@ class DatabaseLoader():
         # parse
         fnames_slp = []
         fnames_vids = []
-        
-        #
+        print (" parsing dataframe of size: ", len(self.df))
+        ctr=0
         for dd in self.df.iterrows():
 
             #
-            if dd[1]['NN Type']== self.nn_type:
+            if dd[1]['NN Type']==self.network_type:
 
                 fname_vid = dd[1]['Filename']
                 fname_slp = dd[1]['Slp filename']
-                
-                temp = os.path.join(self.root_dir,
-                                               self.input_dir,
-                                               fname_slp)
-                if os.path.exists(temp)==False:
-                    continue
-                                               
-                
                 fnames_slp.append(os.path.join(self.root_dir,
                                                self.input_dir,
                                                fname_slp))
                 fnames_vids.append(os.path.join(self.root_dir,
                                                 self.input_dir,
                                                 fname_vid))
+                                                
+            ctr+=1
+            if ctr>5000:
+                break
         #
         print ("\nrunning .slp preprocessing and id_switch detection ...")
         self.find_id_switches_parallel(fnames_slp,
                                        fnames_vids,
                                        self.n_cores)
 
-        print ("\ndone running .slp preprocessing and id_switch detection ...")
-        
         # make the id-switch only deleted slp files
         print ("\nmaking shortened id_switch .slp files...")
         self.make_deleted_slp_files_parallel(fnames_slp,
                                              fnames_vids,
-                                             self.n_cores,
-                                             self.nn_type)
-            
+                                             self.n_cores)
+
         # make the hybrid video containing all the id-switch frames
         print ("\nmaking shortened id_switch video file...")
         self.fname_id_switch_vid = os.path.join(self.root_dir,
-											    self.nn_type + 
-                                               '_id_switches_cropped.mp4')
+                                               'id_switches_cropped.mp4')
         self.make_hybrid_video_from_list(fnames_slp,
                                          fnames_vids,
                                          self.fname_id_switch_vid)
@@ -2704,8 +2627,7 @@ class DatabaseLoader():
 
   #
     def clean_human_slp(self):
-		
-        print ("cleaning human slp file...")
+
         self.fname_slp = os.path.join(self.root_dir,
                                       self.human_slp_dir,
                                       self.fname_slp_human_labels)
@@ -2714,48 +2636,43 @@ class DatabaseLoader():
         # remove non-human labels from .slp file
         #  and save movie indexes etc.
         self.fname_human_slp = os.path.join(self.root_dir,
-											self.nn_type +
-                                            '_human_labels.slp')
+                                            'human_labels.slp')
         self.fname_human_vid = os.path.join(self.root_dir,
-                                            self.nn_type+'_human_labels.avi')
+                                            'human_labels.avi')
         self.fname_human_slp = self.make_human_label_only_slp(self.fname_human_vid,
                                                               os.path.join(self.root_dir,
                                                                            self.human_slp_dir,
                                                                            self.fname_slp_human_labels),
-                                                              self.human_slp_dir,
-                                                              self.nn_type)
+                                                              self.human_slp_dir)
 
         #
         self.idx = np.load(self.fname_human_slp.replace("human_labels.slp",
-                                                        "human_frames_idx.npy"))
+                                                         "human_frames_idx.npy"))
         self.fnames = np.load(self.fname_human_slp.replace("human_labels.slp",
-                                                          "human_fnames.npy"))
+                                                           "human_fnames.npy"))
 
         #
 
         self.make_human_label_only_video(self.idx,
                                          self.fnames,
-                                         self.fname_human_vid,
-                                         self.nn_type)
+                                         self.fname_human_vid)
 
     def merge_slp_files(self):
-		# human slp file
+              
+        # human slp file
         fname_slp1 = self.fname_human_slp
 
         # id switch slp file
         fname_slp2 = self.fname_id_switch_vid.replace("mp4","slp")
 
         #
-        fname_hybrid_video = os.path.join(self.root_dir,
-										self.nn_type+ "_merged.avi")
+        fname_hybrid_video = os.path.split(fname_slp1)[0]+"/merged.avi"
 
         #
         merged_video = sleap.load_video(fname_hybrid_video)
-        print(merged_video)
 
         #
-        fname_hybrid_slp = os.path.join(self.root_dir,
-                                        self.nn_type + "_merged.slp")
+        fname_hybrid_slp = fname_hybrid_video[:-4] + ".slp"
 
         # Load labels
         slp_files = [fname_slp1,
@@ -2798,10 +2715,6 @@ class DatabaseLoader():
                     else:
                         continue
 
-                #
-                if ctrv==1 and ctrl%1000==0:
-                    print ("slp ctrl: ", ctrl)
-
                 # Update reference to merged video.
                 lf.video = merged_video
 
@@ -2840,11 +2753,11 @@ class DatabaseLoader():
     def merge_human_and_id_switches(self):
 
         #
-        self.merge_slp_files()
-
-        #
         self.merge_video_files()
 
+        #
+        self.merge_slp_files()
+        
     #
     def merge_video_files(self):
 
@@ -2852,19 +2765,6 @@ class DatabaseLoader():
             self.fname_human_slp.replace('slp','avi'),
             self.fname_id_switch_vid
         ]
-	
-       # load either original labels or id switch videos
-        original_vid = cv2.VideoCapture(fnames[0])
-        
-         
-        if original_vid.isOpened(): 
-            # get vcap property 
-            width  = original_vid.get(3)#cv2.cv.CV_CAP_PROP_FRAME_WIDTH)   # float `width`
-            height = original_vid.get(4)#cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)  # float `height`
-
-        original_vid.release()
-        print ("Loaded video sizes: width, height: ", width, height)
-            
 
         # make new video video settings
         #fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
@@ -2875,11 +2775,10 @@ class DatabaseLoader():
         # fourcc = cv2.VideoWriter_fourcc('p', 'n', 'g', '')
 
         # load videos
-        fname_out = os.path.join(os.path.split(self.fname_id_switch_vid)[0],
-								self.nn_type+"_merged.avi")
+        fname_out = os.path.join(os.path.split(self.fname_id_switch_vid)[0]+"/merged.avi")
 
         # make new video video settings
-        size_vid = np.int32(np.array([width, height]))
+        size_vid = np.int32(np.array([900, 700]))
         fps_out = 1
 
         #
@@ -2927,4 +2826,5 @@ class DatabaseLoader():
 
         video_out.release()
 
-        print("done...")
+        print("done merging video files...")
+
