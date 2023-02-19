@@ -85,7 +85,7 @@ class Track():
 
         keys = hf.keys()
         group2 = hf.get('tracks')
-        #print ("group2: ", group2)
+
         tracks = []
         for k in range(len(group2)):
             tracks.append(group2[k])
@@ -212,7 +212,7 @@ class Track():
             ########################################
             ###########  Delete big jumps ##########
             ########################################
-            for k in trange(1,track_xy1.shape[0]-1,1, desc='setting big jumps to nans'):
+            for k in range(1,track_xy1.shape[0]-1,1):
                 if np.linalg.norm(track_xy1[k]-track_xy1[k-1])>max_jump_allowed:
                     track_xy1[k]=np.nan
 
@@ -229,9 +229,9 @@ class Track():
                 inside = False
 
             # interpolate between small bits
-            for k in trange(1,track_xy1.shape[0]-1,1,
-                            position=0, leave=True,
-                            desc='join segements that are close'):
+            for k in range(1,track_xy1.shape[0]-1,1):
+                            #position=0, leave=True,
+                            #desc='join segements that are close'):
                 if np.isnan(track_xy1[k,0]):
                     if inside:
                         inside=False
@@ -261,9 +261,9 @@ class Track():
                 inside = False
 
             # interpolate between small bits
-            for k in trange(1,track_xy1.shape[0]-1,1,
-                            position=0, leave=True,
-                            desc='interpolate betweensmall bits'):
+            for k in range(1,track_xy1.shape[0]-1,1):
+                            #position=0, leave=True,
+                            #desc='interpolate betweensmall bits'):
                 if np.isnan(track_xy1[k,0]):
                     if inside:
                         inside=False
@@ -297,7 +297,7 @@ class Track():
         self.use_dynamic_centroid = False
         self.load_tracks()
 
-        print ("spine tracks: ", self.tracks_spine.shape)
+        #print ("spine tracks: ", self.tracks_spine.shape)
         ####################################################
         ### OPTIONAL - MEDIAN FILTER ALL TRACKS ############
         ####################################################
@@ -311,7 +311,7 @@ class Track():
         # max_jump_allowed = 50              # maximum distance that a gerbil can travel in 1 frame
         # max_dist_to_join = 50              # maximum distnace between 2 chunks that can safely be merged
         # min_chunk_len = 5                  # minimum number of frames that a chunk has to survive for in order to be saved
-        print (" cleaning tracks spine")
+        #print (" cleaning tracks spine")
         self.clean_tracks_spine(max_jump_allowed,
                                 max_dist_to_join,
                                 min_chunk_len)
@@ -331,7 +331,7 @@ class Track():
         ########## RERUN TRACK CLEANUP ##############
         #############################################
         #
-        print (" cleaning tracks spine")
+        #print (" cleaning tracks spine")
         self.clean_tracks_spine(max_jump_allowed,
                                 max_dist_to_join,
                                 min_chunk_len)
@@ -420,7 +420,7 @@ class Track():
             Loop over the tcrs and check if jumps are too high to re-break track
         '''
 
-        print ("... Making tracks chunks...")
+        #print ("... Making tracks chunks...")
 
         # break distances that are very large over single jumps
         # join by time
@@ -434,7 +434,7 @@ class Track():
             start = 0
             end = None
 
-        for k in trange(1,track.shape[0],1):
+        for k in range(1,track.shape[0],1):
             if np.isnan(track[k,0])==True:
                 if in_segment==True:
                     self.tracks_chunks.append([start, k-1])
@@ -547,7 +547,7 @@ class Track():
         '''
 
         #self.clean_tracks_spine()
-        print ("running memory interpolation on huddles")
+        #print ("running memory interpolation on huddles")
         #
         self.tracks_spine_fixed = self.tracks_spine_fixed.squeeze()
 
@@ -559,7 +559,7 @@ class Track():
         final_merged_locs = []
 
         # loop over all segs
-        print (" Total # of starting huddle segments: ", len(all_segs))
+        #print (" Total # of starting huddle segments: ", len(all_segs))
         with tqdm(total=len(all_segs),
                   position=0, leave=True,
                   desc='Remaining inner segments to analyze') as pbar:
@@ -702,20 +702,17 @@ class Track():
         self.final_merged_locs = final_merged_locs
 
     #
-    def save_updated_huddle_tracks(self):
-
-
-        fname_out = self.fname_slp[:-4]+'_multi_track_huddles.npy'
+    def save_updated_huddle_tracks(self, fname_out):
 
         #
-        print (" # of detected tracks/huddles: ", len(self.final_merged_times))
+        #print (" # of detected tracks/huddles: ", len(self.final_merged_times))
 
         # make multi-huddle track
         self.tracks_huddles = np.zeros((self.tracks_spine.shape[0],
                                         len(self.final_merged_times),
                                         2))*np.nan
         # loop over all huddles
-        for k in trange(len(self.final_merged_times)):
+        for k in range(len(self.final_merged_times)):
             times = self.final_merged_times[k]
             segs = self.final_merged_locs[k]
 
@@ -723,7 +720,7 @@ class Track():
                 t = np.arange(time_chunk[0], time_chunk[1],1)
                 self.tracks_huddles[t,k] = seg_chunk
 
-        print ("fname out: ", fname_out)
+        #print ("fname out: ", fname_out)
         np.save(fname_out, self.tracks_huddles)
 
 
@@ -889,7 +886,7 @@ class Track():
 
             #
             self.scores = np.zeros((len(self.slp), self.n_animals), 'float32') + np.nan
-            for n in trange(len(self.slp)):
+            for n in range(len(self.slp)):
                 for a in range(len(self.slp[n])):
                     name = self.slp[n][a].track.name
                     idx = self.tracks_names.index(name)
@@ -1410,7 +1407,7 @@ def detect_id_switch3(tracks,
     ctr = 0
     frame_ids = []
     corner = 300
-    for k in trange(tracks.shape[0] - 1, desc='finding id switches in movie'):
+    for k in range(tracks.shape[0] - 1): # desc='finding id switches in movie'):
         feats0 = track[k]
 
         for a in other_animal_ids:
