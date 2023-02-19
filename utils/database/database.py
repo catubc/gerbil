@@ -247,8 +247,13 @@ class CohortProcessor():
             self.symmetric_matrices=False
             self.plotting=False
             temp = self.compute_pairwise_interactions(track)
-
-            temp = temp[a1,a2]
+			
+            try:
+                temp = temp[a1,a2]
+            except:
+                print ("error with track too few animals..")
+                res.append(np.zeros((6,6))[a1,a2])
+                continue
 
             res.append(temp)
 
