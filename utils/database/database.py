@@ -71,7 +71,9 @@ class CohortProcessor():
                              fix_track_flag,
                              interpolate_flag):
 
-
+        fname_out = os.path.join(fname_slp[:-4]+"_spine.npy")
+        if os.path.exists(fname_out):
+            return
         #fname = '/media/cat/256GB/dan/huddles/p26_huddles.npy'
 
         #
@@ -109,7 +111,7 @@ class CohortProcessor():
         t.save_centroid()
 
         #
-        t.save_updated_huddle_tracks()
+        t.save_updated_huddle_tracks(fname_out)
 
             #
     def preprocess_huddle_tracks(self):
@@ -121,11 +123,11 @@ class CohortProcessor():
         #
         fnames_slp = []
         for k in range(self.fnames_slp.shape[0]):
-            fname = os.path.join(self.root_dir_features,self.fnames_slp[k][0]).replace(
-                                    '.mp4','_'+self.NN_type[k][0])+"_huddle.slp"
+            fname = os.path.join(self.root_dir_features,
+							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_huddle.slp"
+            #
             if os.path.exists(fname):
                 fnames_slp.append(fname)
-
 
         #
         if self.parallel:
@@ -136,11 +138,10 @@ class CohortProcessor():
                        pm_processes=self.n_cores,
                        pm_pbar = True)
         else:
-            for fname_slp in fnames_slp:
-                self.process_huddle_track(fname_slp)
-
-        #
-
+            for fname_slp in tqdm(fnames_slp):
+                self.process_huddle_track(fname_slp,
+											self.fix_track_flag,
+											self.interpolate_flag,)
 
     #
     def preprocess_feature_tracks(self):
@@ -165,8 +166,8 @@ class CohortProcessor():
                    pm_processes=self.n_cores,
                    pm_pbar = True)
         else:
-            for fname_slp in fnames_slp:
-                self.process_track(fname_slp)
+            for fname_slp in tqdm(fnames_slp):
+                self.process_feature_track(fname_slp)
 
         #
 
@@ -218,12 +219,11 @@ class CohortProcessor():
                *method_list,
                sep='\n  ')
 
-
-
+	#
     def get_pairwise_interaction_time(self, a1, a2):
 
         res=[]
-        for k in trange(0,991,1):
+        for k in trange(0,1500,1):
             self.track_id = k
             track = self.load_single_feature_spines()
 
@@ -289,10 +289,13 @@ class CohortProcessor():
 
 
     def load_single_feature_spines(self):
-
-        fname = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+        
+        try:
+            fname = os.path.join(os.path.split(self.fname_spreadsheet)[0],
                                      'features',
                                      self.fnames_slp[self.track_id][0].replace('.mp4','_'+self.NN_type[self.track_id][0]+".slp"))
+        except:
+            return None
         #
         t = track.Track(fname)
         t.fname=fname
