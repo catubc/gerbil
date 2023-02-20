@@ -139,8 +139,8 @@ class Track():
 
         print ("saving centroid")
 
-        fname_spine = self.fname_slp[:-4]+"_spine.npy"
-        np.save(fname_spine, self.tracks_spine)
+        self.fname_spine_saved = self.fname_slp[:-4]+"_spine.npy"
+        np.save(self.fname_spine_saved, self.tracks_spine)
 
     #
     def get_track_spine_centers(self):

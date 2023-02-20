@@ -236,8 +236,11 @@ class CohortProcessor():
             self.symmetric_matrices=False
             self.plotting=False
             temp = self.compute_pairwise_interactions(track)
-
-            temp = temp[a1,a2]
+            try:
+                temp = temp[a1,a2]
+            except:
+                print ("Missing animal track...")
+                temp = np.zeros((6,6))[a1,a2]
 
             res.append(temp)
 
