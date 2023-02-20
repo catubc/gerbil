@@ -219,6 +219,93 @@ class CohortProcessor():
                *method_list,
                sep='\n  ')
 
+
+    #
+    def compute_rectangle_occupancy(self,
+                                 track_local,
+                                 lower_left,
+                                 upper_right):
+        #
+        idx = np.where(np.isnan(track_local.sum(1))==False)[0]
+        track_local2 = track_local[idx]
+        idx2 = np.where(np.all(np.logical_and(track_local2>=lower_left,
+                                     track_local2 <= upper_right), axis=1))[0]
+        #print (track_local2.shape, idx2.shape)
+
+        return idx2.shape[0]/track_local.shape[0]*100
+
+    #
+    def get_rectangle_occupancy(self, a1):
+
+        #
+        res=[]
+        lower_left = self.rect_coords[0]
+        upper_right = self.rect_coords[1]
+
+        #
+        for k in trange(0,1500,1):
+            self.track_id = k
+            track = self.load_single_feature_spines()
+            # if track is missing, skip it
+            if track is None:
+                res.append(0)
+                continue
+
+            #
+            temp = self.compute_rectangle_occupancy(track.tracks_spine[:,a1],
+                                                    lower_left,
+                                                    upper_right)
+
+            res.append(temp)
+
+        res = np.array(res)
+        print ("res: ", res.shape)
+
+        self.res = res
+
+
+    #
+    def compute_circle_occupancy(self,
+                                 track_local,
+                                 centre,
+                                 radius):
+        #
+        xx = track_local-centre
+        idx = np.where(np.isnan(xx.sum(1))==False)[0]
+        dists = np.linalg.norm(xx[idx],axis=1)
+        idx = np.where(dists<=radius)[0]
+
+        return idx.shape[0]/xx.shape[0]*100
+
+    #
+    def get_circle_occupancy(self, a1):
+
+        res=[]
+        centre = self.circle_coords[0]
+        radius = np.linalg.norm(self.circle_coords[0]-self.circle_coords[1])
+
+        #
+        for k in trange(0,1500,1):
+            self.track_id = k
+            track = self.load_single_feature_spines()
+            # if track is missing, skip it
+            if track is None:
+                res.append(0)
+                continue
+
+            #
+            temp = self.compute_circle_occupancy(track.tracks_spine[:,a1],
+                                                 centre,
+                                                 radius)
+
+
+            res.append(temp)
+
+        res = np.array(res)
+        print ("res: ", res.shape)
+
+        self.res = res
+
 	#
     def get_pairwise_interaction_time(self, a1, a2):
 
@@ -321,18 +408,129 @@ class CohortProcessor():
         #
         print ("current session: ", self.current_session)
 
+    def set_roi(self):
+
+        #
+        global circle_coords, rect_coords
+        global ax1, fig
+
+        from matplotlib import pyplot as plt, patches
+
+        fig, ax1 = plt.subplots(figsize=(13,10))
+       # #line, = ax1.plot(x, y, 'o', picker=10)
+        plt.ylim(0,700)
+
+        #
+        track_local = np.load(self.fname_slp_npy)
+        print (track_local.shape)
+
+        plt.imshow(self.video_frame,
+                   aspect='auto')
+        plt.plot(track_local[:,0,0],
+                 track_local[:,0,1])
+#
+        plt.title("Left button: 1- centre; 2-radius\n "+
+                   "Right button: 1- bottom left; 2-top right\n " +
+                   "Centre button: exit")
 
 
-    def track_video(self):
+        circle_coords=np.zeros((2,2))
+        rect_coords=np.zeros((2,2))
+
+        #
+        def click_handler(event):
+            global circle_coords, rect_coords
+            global ax1, fig
+
+            if event.button == 3:
+                if rect_coords[0].sum()==0:
+                    rect_coords[0] = [event.xdata, event.ydata]
+                else:
+                    rect_coords[1] = [event.xdata, event.ydata]
+                #print("left-click!", circle_coords)
+                # do something
+
+            if event.button == 2:
+                plt.close(fig)
+                return
+
+            #
+            if event.button == 1:
+                if circle_coords[0].sum()==0:
+                    circle_coords[0] = [event.xdata, event.ydata]
+                else:
+                    circle_coords[1] = [event.xdata, event.ydata]
+
+            if circle_coords[1].sum()>0:
+                diff =  circle_coords[0]-circle_coords[1]
+
+                dist = np.linalg.norm(diff)
+                circle1 = patches.Circle(circle_coords[0],
+                                         dist,
+                                         color='r',
+                                         alpha=.5)
+                ax1.add_patch(circle1)
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+                #
+
+            #
+            if rect_coords[1].sum()>0:
+                rect_coords = np.vstack(rect_coords)
+
+                for k in range(2):
+                    plt.plot([rect_coords[k][0], rect_coords[k][0]],
+                             [rect_coords[0][1], rect_coords[1][1]],
+                            '--',
+                            c='red')
+
+                for k in range(2):
+                    plt.plot([rect_coords[0][0], rect_coords[1][0]],
+                             [rect_coords[k][1], rect_coords[k][1]],
+                            '--',
+                            c='red')
+
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+
+                #
+
+
+        #
+        fig.canvas.mpl_connect('button_press_event', click_handler)
+
+        #
+        plt.show(block=True)
+
+        #
+        self.circle_coords=circle_coords
+        self.rect_coords=rect_coords
+
+
+
+    #
+    def load_video(self):
         ''' Function that takes as input filename
 
         :return:
         '''
 
-        pass
+        import cv2
 
+        #
+        cap = cv2.VideoCapture(self.fname_video)
 
+        while(cap.isOpened()):
+            ret, frame = cap.read()
 
+            break
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+        self.video_frame = frame
+
+    #
     def detect_audio(self):
         pass
 

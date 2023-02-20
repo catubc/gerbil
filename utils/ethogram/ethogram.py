@@ -1266,6 +1266,7 @@ def make_random_data(n_days,
 
 #
 def plot_ethogram_hourly(n_partitions,
+                         behavior_name,
                          cohort,
                          vmax):
     
@@ -1331,8 +1332,8 @@ def plot_ethogram_hourly(n_partitions,
               extent=[0+0.5,n_partitions+0.5, start_day-0.5,end_day-0.5])
     
     #
-    plt.colorbar(label=" % time proximal")
+    plt.colorbar(label="% "+behavior_name)
     plt.ylabel("Post natal day")
     plt.xlabel("Time of day")
-    plt.title("Behavior: "+cohort.behavior_name )
-    plt.show()
+    plt.title("Animals: "+str(cohort.animals))
+    plt.show(block=False)
