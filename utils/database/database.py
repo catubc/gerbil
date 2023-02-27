@@ -27,12 +27,16 @@ import pandas as pd
 class CohortProcessor():
 
     #
-    def __init__(self):
+    def __init__(self, fname_spreadsheet):
 
         self.cohort_start_date = None
         self.cohort_end_date = None
 
         self.current_session = None
+
+        self.fname_spreadsheet = fname_spreadsheet
+
+        self.root_dir = os.path.split(self.fname_spreadsheet)[0]
 
         #self.list_methods()
 
@@ -113,7 +117,82 @@ class CohortProcessor():
         #
         t.save_updated_huddle_tracks(fname_out)
 
+    #
+    def remove_huddles_from_feature_tracks(self):
+
+        #
+        #self.root_dir_features = os.path.split(self.fname_spreadsheet)[0],
+                                              #          'huddles')
+
+        #
+        fnames_slp_huddle = []
+        fnames_slp_features = []
+        found = 0
+        for k in range(self.fnames_slp.shape[0]):
+            fname_huddle = os.path.join(self.root_dir,
+                                 'huddles',
+							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_huddle_spine_fixed_interpolated.npy"
+
+            fname_features = os.path.join(self.root_dir,
+                                 'features',
+							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_spine.npy"
+
             #
+            if os.path.exists(fname_features) and os.path.exists(fname_features):
+                fnames_slp_huddle.append(fname_huddle)
+                fnames_slp_features.append(fname_features)
+                found+=1
+            else:
+                pass
+                #print ("missing file: ", self.fnames_slp[k][0])
+
+        print ("# file pairs found: ", found, " (if less  than above, please check missing)")
+
+        #
+        fnames_all = list(zip(fnames_slp_features,fnames_slp_huddle))
+
+        if self.parallel:
+            parmap.map(self.remove_huddles,
+                       fnames_all,
+                       pm_processes=self.n_cores,
+                       pm_pbar = True)
+        else:
+            for fnames in tqdm(fnames_all):
+                self.remove_huddles(fnames)
+
+
+    def remove_huddles(self,fnames):
+
+        fname_features, fname_huddles = fnames[0], fnames[1]
+
+        #
+        huddles = np.load(fname_huddles)
+        features = np.load(fname_features)
+
+        #
+        for k in range(huddles.shape[0]):
+
+            h_loc = huddles[k]
+            #print (h_loc)
+            if np.isnan(h_loc[0,0]):
+                continue
+
+            f_loc = features[k]
+            #print ("h_loc: ", h_loc.shape, "  f_loc: ", f_loc.shape)
+
+            dists = np.linalg.norm(f_loc-h_loc,axis=1)
+            #print ("dists: ", dists)
+
+            # set
+            idx = np.where(dists<=self.huddle_min_distance)
+            #print ("idx: ", idx)
+            features[k,idx]=np.nan
+
+        fname_out = fname_features.replace('.npy','_nohuddle.npy')
+        np.save(fname_out, features)
+
+
+    #
     def preprocess_huddle_tracks(self):
 
         #
@@ -302,12 +381,92 @@ class CohortProcessor():
             res.append(temp)
 
         res = np.array(res)
-        print ("res: ", res.shape)
+        #print ("res: ", res.shape)
 
         self.res = res
 
-	#
+    def show_developmental_trajectories(self):
+
+        #
+        print (self.animal_ids)
+
+        #
+        d = []
+        for animal_id in self.animal_ids:
+
+            #
+            fname_in = os.path.join(self.root_dir,
+                                    self.behavior_name+"_"+str(animal_id)+'.npy').replace('(','[').replace(')',']')
+
+            #
+            temp = np.load(fname_in)
+            d.append(temp)
+
+        d = np.vstack(d)
+        print (d.shape)
+        print (d)
+
+        #
+        from sklearn import decomposition
+
+        idx = np.where(np.isnan(d))
+        d[idx]=0
+
+
+
+        #
+        pca = decomposition.PCA(n_components=3)
+        X_pca = pca.fit_transform(d)
+
+        print ("X_pca: ", X_pca.shape)
+        clrs = ['black','blue','red','green','brown','pink','magenta','lightgreen','lightblue',
+                'yellow','lightseagreen','orange','grey','cyan','teal','lawngreen']
+
+        # removes days which have zero entries
+        if self.remove_zeros:
+            print (d.sum(1).shape)
+            idx = np.where(d.sum(1)==0)
+            X_pca[idx]=np.nan
+
+        #
+        plt.figure()
+        for k in range(0,X_pca.shape[0],temp.shape[0]):
+
+            x = X_pca[k:k+temp.shape[0],0]
+            y = X_pca[k:k+temp.shape[0],1]
+            sizes = np.arange(1,10+temp.shape[0])*10
+
+
+            idx = np.where(np.isnan(x)==False)
+            x = x[idx]
+            y = y[idx]
+            sizes = sizes[idx]
+            #print (idx)
+
+            plt.scatter(x,
+                        y,
+                        label=str(self.animal_ids[k//temp.shape[0]]),
+                        s=sizes,
+                        c=clrs[k//temp.shape[0]])
+
+            # connect lines
+            plt.plot(x,
+                     y,
+                        c=clrs[k//temp.shape[0]])
+
+        plt.xlabel("PC1")
+        plt.ylabel("PC2")
+        plt.title(self.behavior_name)
+        plt.legend()
+        plt.show()
+
+
+    #
     def get_pairwise_interaction_time(self, a1, a2):
+
+        names = ['female','male','pup1','pup2','pup3','pup4']
+        self.animals_interacting = ''+names[self.animal_ids[0]] + " " + names[self.animal_ids[1]]
+
 
         res=[]
         for k in trange(0,1500,1):
@@ -332,11 +491,10 @@ class CohortProcessor():
             res.append(temp)
 
         res = np.array(res)
-        print ("res: ", res.shape)
 
         self.res = res
 
-
+    #
     def format_behavior(self):
 
         #
@@ -349,7 +507,7 @@ class CohortProcessor():
 
         #
         self.data = np.vstack(self.data)
-        print (self.data)
+        #print (self.data)
 
         # compute average per hour
         self.data_ave = []
@@ -363,8 +521,10 @@ class CohortProcessor():
                 temp[2] = np.mean(s)
                 self.data_ave.append(temp)
                 s=[]
+
         self.data = np.vstack(self.data_ave)
 
+    #
     def list_recordings(self):
 
 
@@ -374,15 +534,18 @@ class CohortProcessor():
     def compress_video(self):
         pass
 
-
+    #
     def load_single_feature_spines(self):
-        
+
+
         try:
             fname = os.path.join(os.path.split(self.fname_spreadsheet)[0],
                                      'features',
                                      self.fnames_slp[self.track_id][0].replace('.mp4','_'+self.NN_type[self.track_id][0]+".slp"))
         except:
             return None
+
+
         #
         t = track.Track(fname)
         t.fname=fname
@@ -391,6 +554,7 @@ class CohortProcessor():
             return None
 
         #
+        t.no_huddle_features = self.no_huddle_features
         t.get_track_spine_centers()
 
         return t

@@ -1265,20 +1265,28 @@ def make_random_data(n_days,
     return data
 
 #
-def plot_ethogram_hourly(n_partitions,
-                         behavior_name,
-                         cohort,
-                         vmax):
+def generate_ethogram_hourly(n_partitions,
+                             behavior_name,
+                             cohort,
+                             no_huddle_features,
+                             vmax):
     
+
+    fname_out = os.path.join(cohort.root_dir,
+                             behavior_name+"_"+str(cohort.animal_ids) +'.npy')
+
+    if os.path.exists(fname_out):
+        return None
+
     #
     data = cohort.data.copy()
     day = data[0][0]
     start_day = day.copy()
-    print ("start day: ", day)
+   # print ("start day: ", day)
 
     #
     time = data[0][1]
-    print ("start time: ", time)
+    #print ("start time: ", time)
     
     #
     temp = np.zeros(n_partitions)
@@ -1318,11 +1326,28 @@ def plot_ethogram_hourly(n_partitions,
             temp = temp*0
             
     img = np.array(img)[::-1]
+
+    #
+    np.save(fname_out, img)
     
     #
-    end_day = day
-    
+def plot_ethogram_hourly(n_partitions,
+                         behavior_name,
+                         cohort,
+                         no_huddle_features,
+                         vmax):
+
+    data = cohort.data.copy()
+    day = data[0][0]
+    start_day = day.copy()
+    print ("start day: ", day)
+    self.end_day = day
+
     #
+    time = data[0][1]
+    print ("start time: ", time)
+
+
     plt.figure()
     plt.imshow(img,
               #aspect='auto',
@@ -1330,10 +1355,10 @@ def plot_ethogram_hourly(n_partitions,
                vmax=vmax,
               interpolation='none',
               extent=[0+0.5,n_partitions+0.5, start_day-0.5,end_day-0.5])
-    
+
     #
     plt.colorbar(label="% "+behavior_name)
     plt.ylabel("Post natal day")
     plt.xlabel("Time of day")
-    plt.title("Animals: "+str(cohort.animals))
+    plt.title("Animals: "+str(cohort.animals) + ", excluded huddles: "+str(no_huddle_features))
     plt.show(block=False)
