@@ -149,11 +149,11 @@ class Track():
         '''
         #
 
-        if self.no_huddle_features:
-            fname_spine = self.fname_slp[:-4]+"_spine_nohuddle.npy"
-
-        else:
-            fname_spine = self.fname_slp[:-4]+"_spine.npy"
+        # if self.no_huddle_features:
+        #     fname_spine = self.fname_slp[:-4]+"_spine_nohuddle.npy"
+        #
+        # else:
+        fname_spine = self.fname_slp[:-4]+"_spine.npy"
 
         #
         if os.path.exists(fname_spine)==False or self.recompute_spine_centres==True:
