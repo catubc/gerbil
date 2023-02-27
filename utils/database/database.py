@@ -75,10 +75,18 @@ class CohortProcessor():
                              fix_track_flag,
                              interpolate_flag):
 
-        fname_out = os.path.join(fname_slp[:-4]+"_spine.npy")
+        text = '_spine'
+        if fix_track_flag:
+           text = text + "_fixed"
+        if interpolate_flag:
+           text = text + "_interpolated"
+
+        #
+        fname_out = os.path.join(fname_slp[:-4]+text+".npy")
+
+        #
         if os.path.exists(fname_out):
             return
-        #fname = '/media/cat/256GB/dan/huddles/p26_huddles.npy'
 
         #
         t = track.Track(fname_slp)
