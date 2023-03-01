@@ -180,21 +180,24 @@ class CohortProcessor():
         #
         for k in range(huddles.shape[0]):
 
-            h_loc = huddles[k]
-            #print (h_loc)
-            if np.isnan(h_loc[0,0]):
-                continue
+            h_locs = huddles[k]
+            
+            for h_loc in h_locs:
+                
+                if np.isnan(h_loc[0]):
+                    continue
+                #print (h_loc)
 
-            f_loc = features[k]
-            #print ("h_loc: ", h_loc.shape, "  f_loc: ", f_loc.shape)
+                f_loc = features[k]
+                #print ("h_loc: ", h_loc.shape, "  f_loc: ", f_loc.shape)
 
-            dists = np.linalg.norm(f_loc-h_loc,axis=1)
-            #print ("dists: ", dists)
+                dists = np.linalg.norm(f_loc-h_loc,axis=1)
+                #print ("dists: ", dists)
 
-            # set
-            idx = np.where(dists<=self.huddle_min_distance)
-            #print ("idx: ", idx)
-            features[k,idx]=np.nan
+                # set
+                idx = np.where(dists<=self.huddle_min_distance)
+                #print ("idx: ", idx)
+                features[k,idx]=np.nan
 
         fname_out = fname_features.replace('.npy','_nohuddle.npy')
         np.save(fname_out, features)
