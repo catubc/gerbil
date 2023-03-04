@@ -98,14 +98,14 @@ class Track():
         '''
         #
 
-        if self.no_huddle_features:
+        if self.exclude_huddles:
             fname_spine = self.fname_slp[:-4]+"_spine_nohuddle.npy"
 
         else:
             fname_spine = self.fname_slp[:-4]+"_spine.npy"
 
         #
-        if os.path.exists(fname_spine)==False:
+        if os.path.exists(fname_spine)==False or self.recompute:
 
             self.tracks_spine = self.tracks_centers.copy()*0 + np.nan
             ids = [6,7,5,8,4,3,2,1,0]  # centred on spine2

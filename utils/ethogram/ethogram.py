@@ -1268,14 +1268,14 @@ def make_random_data(n_days,
 def generate_ethogram_hourly(n_partitions,
                              behavior_name,
                              cohort,
-                             no_huddle_features,
-                             vmax):
+                             exclude_huddles):
     
 
     fname_out = os.path.join(cohort.root_dir,
-                             behavior_name+"_"+str(cohort.animal_ids) +'.npy')
+                             behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
+                             +str(exclude_huddles)+ '.npy')
 
-    if os.path.exists(fname_out):
+    if os.path.exists(fname_out) and cohort.recompute==False:
         return None
 
     #
@@ -1334,18 +1334,19 @@ def generate_ethogram_hourly(n_partitions,
 def plot_ethogram_hourly(n_partitions,
                          behavior_name,
                          cohort,
-                         no_huddle_features,
+                         exclude_huddles,
                          vmax):
 
-    data = cohort.data.copy()
-    day = data[0][0]
-    start_day = day.copy()
-    print ("start day: ", day)
-    self.end_day = day
+    fname_out = os.path.join(cohort.root_dir,
+                             behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
+                             +str(exclude_huddles)+ '.npy')
+
+    img = np.load(fname_out)
+    start_day = 15
+    end_day = 30
 
     #
-    time = data[0][1]
-    print ("start time: ", time)
+
 
 
     plt.figure()
@@ -1360,5 +1361,5 @@ def plot_ethogram_hourly(n_partitions,
     plt.colorbar(label="% "+behavior_name)
     plt.ylabel("Post natal day")
     plt.xlabel("Time of day")
-    plt.title("Animals: "+str(cohort.animals) + ", excluded huddles: "+str(no_huddle_features))
+    plt.title("Animals: "+str(cohort.animal_ids) + ", excluded huddles: "+str(exclude_huddles))
     plt.show(block=False)

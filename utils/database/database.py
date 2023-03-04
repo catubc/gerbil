@@ -406,8 +406,11 @@ class CohortProcessor():
         for animal_id in self.animal_ids:
 
             #
+            #fname_in = os.path.join(self.root_dir,
+            #                        self.behavior_name+"_"+str(animal_id)+'.npy').replace('(','[').replace(')',']')
             fname_in = os.path.join(self.root_dir,
-                                    self.behavior_name+"_"+str(animal_id)+'.npy').replace('(','[').replace(')',']')
+                                     self.behavior_name+"_"+str(animal_id) +"_excludehuddles_"
+                                     +str(self.exclude_huddles)+ '.npy').replace('(','[').replace(')',']')
 
             #
             temp = np.load(fname_in)
@@ -415,15 +418,13 @@ class CohortProcessor():
 
         d = np.vstack(d)
         print (d.shape)
-        print (d)
+        print ("sums: ", np.nansum(d))
 
         #
         from sklearn import decomposition
 
         idx = np.where(np.isnan(d))
         d[idx]=0
-
-
 
         #
         pca = decomposition.PCA(n_components=3)
@@ -435,8 +436,8 @@ class CohortProcessor():
 
         # removes days which have zero entries
         if self.remove_zeros:
-            print (d.sum(1).shape)
             idx = np.where(d.sum(1)==0)
+            print ("removing zeros: ", idx[0].shape)
             X_pca[idx]=np.nan
 
         #
@@ -565,7 +566,7 @@ class CohortProcessor():
             return None
 
         #
-        t.no_huddle_features = self.no_huddle_features
+        t.exclude_huddles = self.exclude_huddles
         t.get_track_spine_centers()
 
         return t
