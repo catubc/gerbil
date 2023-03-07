@@ -683,7 +683,27 @@ class CohortProcessor():
         self.rect_coords=rect_coords
 
 
+    def load_video2(self):
+        
+        import av
+        print ("ASSUMING VIDEO IS 700 x 900... this only works for cohort2...")
 
+        container = av.open(self.fname_video)
+
+        frames = container.decode()
+        print (frames)
+        ctr=0
+        for frame in frames:
+              
+            ctr+=1
+            if ctr>1000:
+                break
+                
+                
+
+        self.video_frame = frame.to_ndarray()[:700]#[::-1]
+      
+        
     #
     def load_video(self):
         ''' Function that takes as input filename
@@ -695,6 +715,8 @@ class CohortProcessor():
 
         #
         cap = cv2.VideoCapture(self.fname_video)
+        
+        print (self.fname_video)
 
         while(cap.isOpened()):
             ret, frame = cap.read()
