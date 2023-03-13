@@ -259,10 +259,70 @@ class CohortProcessor():
             for fname_slp in tqdm(fnames_slp):
                 self.process_feature_track(fname_slp)
 
-        #
-
-
     #
+    def show_3D_plots(self):
+
+        locs = []
+
+        #
+        fig=plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.set_box_aspect((1,1,2))  # aspect ratio is 1:1:1 in data space
+        for k in trange(0,1500,1):
+            self.track_id = k
+            track = self.load_single_feature_spines()
+            # if track is missing, skip it
+            if track is None:
+                continue
+
+            temp = track.tracks_spine[:,self.animal_id]
+
+            start_time = self.start_times_absolute_minute[k]
+
+            x = temp[:,0]
+            y = temp[:,1]
+            z = np.arange(0,x.shape[0],1)#*10
+            z = start_time + z/24/60
+            #print (x.shape, y.shape, z.shape)
+            #if self.subsample:
+
+            idx_split = np.arange(0,x.shape[0],self.subsample_rate)[1:]
+
+            x = np.nanmean(np.split(x, idx_split)[:-1], axis=1)
+            y = np.nanmean(np.split(y, idx_split)[:-1], axis=1)
+            z = np.nanmean(np.split(z, idx_split)[:-1], axis=1)
+
+            # remove big jumps
+            min_dist = 150
+            locs = np.vstack((x,y)).T
+            dists = locs[1:]-locs[:-1]
+            diffs = np.linalg.norm(dists, axis=1)
+            idx = np.where(diffs>min_dist)[0]
+            x[idx] = np.nan
+            y[idx] = np.nan
+            z[idx] = np.nan
+            #print (x.shape)
+            ax.plot(x,y,z, c= 'blue',
+                    linewidth=1,
+                    alpha=.2)
+            #plt.plot()
+
+            #return
+        p21 = 6*24*60
+        p28 = 13*24*60
+        #print (p21, p28)
+        xticks = [p21, p28]
+        xticks_new = ['P21', 'P28']
+
+        ax.set_zticks(xticks)
+        ax.set_zticklabels(xticks_new)
+        ax.set_xlabel("pixel")
+        ax.set_ylabel("pixel")
+        ax.set_zlabel("Development day")
+        ax.set_zlim(bottom=0)
+        plt.suptitle("Animal #: " + str(self.animal_id))
+        plt.show()
+
     def load_database(self):
 
 
@@ -298,6 +358,22 @@ class CohortProcessor():
         #
         self.NN_type = np.vstack(df.loc[:,'NN Type'].iloc[idx].tolist())
 
+        #
+        self.start_times_military = np.array(df.loc[:,'Start time'])
+
+        # generate absolute start times for the data:
+        self.start_times_absolute_minute = []
+        for k in range(len(self.start_times_military)):
+            time = self.start_times_military[k]
+            time = [time.hour, time.minute]
+            pday = int(self.PDays[k][1:])
+
+            #
+            pday_abs = pday - 15
+            time_in_mins = time[0]*60 + time[1]
+            abs_time_in_mins = pday_abs*24*60 + time_in_mins
+            ##print ("pday_abs: ", pday_abs, " , abs_time_in_mins: ", abs_time_in_mins)
+            self.start_times_absolute_minute.append(abs_time_in_mins)
 
     #
     def list_methods(self):

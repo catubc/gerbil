@@ -1265,11 +1265,12 @@ def make_random_data(n_days,
     return data
 
 #
-def generate_ethogram_hourly(n_partitions,
+def generate_ethogram_hourly(
                              behavior_name,
                              cohort,
                              exclude_huddles):
-    
+    #
+    n_partitions=24
 
     fname_out = os.path.join(cohort.root_dir,
                              behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
@@ -1331,11 +1332,13 @@ def generate_ethogram_hourly(n_partitions,
     np.save(fname_out, img)
     
     #
-def plot_ethogram_hourly(n_partitions,
+def plot_ethogram_hourly(
                          behavior_name,
                          cohort,
                          exclude_huddles,
                          vmax):
+
+    n_partitions=24
 
     fname_out = os.path.join(cohort.root_dir,
                              behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
@@ -1352,7 +1355,7 @@ def plot_ethogram_hourly(n_partitions,
     plt.figure()
     plt.imshow(img,
               #aspect='auto',
-               aspect='auto',
+               aspect='equal',
                vmax=vmax,
               interpolation='none',
               extent=[0+0.5,n_partitions+0.5, start_day-0.5,end_day-0.5])
