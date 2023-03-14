@@ -330,11 +330,12 @@ class CohortProcessor():
             #plt.plot()
 
             #return
-        p21 = 6*24*60
-        p28 = 13*24*60
+        #pday_labels = 
+        #p21 = 6*24*60
+        #p28 = 13*24*60
         #print (p21, p28)
-        xticks = [p21, p28]
-        xticks_new = ['P21', 'P28']
+        xticks = pday_starts
+        xticks_new = self.pdays
 
         ax.set_zticks(xticks)
         ax.set_zticklabels(xticks_new)
