@@ -263,8 +263,17 @@ class CohortProcessor():
     def show_3D_plots(self):
 
         locs = []
+        
+        # find the time ranges required
+        pday_starts = []
+        for pd in self.pdays:
+            temp = (int(pd[1:])-15)*24*60
+            pday_starts.append(temp)
+            
+        print ("pday starts: ", pday_starts)
 
         #
+        day_in_mins = 24*60
         fig=plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         ax.set_box_aspect((1,1,2))  # aspect ratio is 1:1:1 in data space
@@ -274,11 +283,24 @@ class CohortProcessor():
             # if track is missing, skip it
             if track is None:
                 continue
+            
+            try:
+                temp = track.tracks_spine[:,self.animal_id]
+            except:
+                print ("Error loading track: ", k)
+                continue
 
-            temp = track.tracks_spine[:,self.animal_id]
 
             start_time = self.start_times_absolute_minute[k]
 
+            good_time = False
+            for pday_start in pday_starts:
+                if abs(start_time - pday_start)<(day_in_mins):
+                    good_time=True
+                    break
+                    
+            if good_time==False:
+                continue
             x = temp[:,0]
             y = temp[:,1]
             z = np.arange(0,x.shape[0],1)#*10
@@ -418,11 +440,16 @@ class CohortProcessor():
                 continue
 
             #
-            temp = self.compute_rectangle_occupancy(track.tracks_spine[:,a1],
-                                                    lower_left,
+            try:
+                #print (track.tracks_spine.shape)
+                temp = self.compute_rectangle_occupancy(track.tracks_spine[:,a1],
+                                                        lower_left,
                                                     upper_right)
 
-            res.append(temp)
+                res.append(temp)
+            except:
+                print("anima;", a1, "error loading track: ", k)
+                res.append(0)
 
         res = np.array(res)
         print ("res: ", res.shape)
