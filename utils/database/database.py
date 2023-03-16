@@ -500,59 +500,79 @@ class CohortProcessor():
 
         self.res = res
 
-    def show_developmental_trajectories(self):
+    def load_ethograms(self):
 
         #
-        print (self.animal_ids)
+        print(self.animal_ids)
 
         #
         d = []
         for animal_id in self.animal_ids:
 
             #
-            #fname_in = os.path.join(self.root_dir,
+            # fname_in = os.path.join(self.root_dir,
             #                        self.behavior_name+"_"+str(animal_id)+'.npy').replace('(','[').replace(')',']')
             fname_in = os.path.join(self.root_dir,
-                                     self.behavior_name+"_"+str(animal_id) +"_excludehuddles_"
-                                     +str(self.exclude_huddles)+ '.npy').replace('(','[').replace(')',']')
+                                    self.behavior_name + "_" + str(animal_id) + "_excludehuddles_"
+                                    + str(self.exclude_huddles) + '.npy').replace('(', '[').replace(')', ']')
 
             #
-            temp = np.load(fname_in)
-            d.append(temp)
+            try:
+                temp = np.load(fname_in)
+                d.append(temp)
+            except:
+                print("file missing: ", fname_in)
 
-        d = np.vstack(d)
-        print (d.shape)
-        print ("sums: ", np.nansum(d))
+        #d = np.vstack(d)
+        self.ethograms = d
 
-        #
-        from sklearn import decomposition
-
-        idx = np.where(np.isnan(d))
-        d[idx]=0
+    def show_developmental_trajectories(self):
 
         #
-        pca = decomposition.PCA(n_components=3)
-        X_pca = pca.fit_transform(d)
+        len_ = self.ethograms[0].shape[0]
+        self.ethograms = np.vstack(self.ethograms)
 
-        print ("X_pca: ", X_pca.shape)
+        #
+        print (self.ethograms.shape)
+        print ("sums: ", np.nansum(self.ethograms))
+
+        #
+        import sklearn
+
+        idx = np.where(np.isnan(self.ethograms))
+        self.ethograms[idx]=0
+
+        #
+        if self.dim_red_method == 'pca':
+            pca = sklearn.decomposition.PCA(n_components=3)
+            X_out = pca.fit_transform(self.ethograms)
+        elif self.dim_red_method == 'tsne':
+            from sklearn.manifold import TSNE
+            #>> > X = np.array([[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 1]])
+            X_out = sklearn.manifold.TSNE(n_components=2, learning_rate='auto',
+            init = 'random', perplexity = 3).fit_transform(self.ethograms)
+
+        #
+        print ("X_out: ", X_out.shape)
         clrs = ['black','blue','red','green','brown','pink','magenta','lightgreen','lightblue',
                 'yellow','lightseagreen','orange','grey','cyan','teal','lawngreen']
 
         # removes days which have zero entries
         if self.remove_zeros:
-            idx = np.where(d.sum(1)==0)
+            idx = np.where(self.ethograms.sum(1)==0)
             print ("removing zeros: ", idx[0].shape)
-            X_pca[idx]=np.nan
+            X_out[idx]=np.nan
 
         #
         plt.figure()
-        for k in range(0,X_pca.shape[0],temp.shape[0]):
+        #len_ = self.ethograms[0].shape[0]
+        for k in range(0,X_out.shape[0],len_):
 
-            x = X_pca[k:k+temp.shape[0],0]
-            y = X_pca[k:k+temp.shape[0],1]
-            sizes = np.arange(1,10+temp.shape[0])*10
+            x = X_out[k:k+len_,0]
+            y = X_out[k:k+len_,1]
+            sizes = np.arange(1,10+len_)*10
 
-
+            #
             idx = np.where(np.isnan(x)==False)
             x = x[idx]
             y = y[idx]
@@ -561,19 +581,20 @@ class CohortProcessor():
 
             plt.scatter(x,
                         y,
-                        label=str(self.animal_ids[k//temp.shape[0]]),
+                        label=str(self.animal_ids[k//len_]),
                         s=sizes,
-                        c=clrs[k//temp.shape[0]])
+                        c=clrs[k//len_])
 
             # connect lines
             plt.plot(x,
                      y,
-                        c=clrs[k//temp.shape[0]])
+                        c=clrs[k//len_])
 
-        plt.xlabel("PC1")
-        plt.ylabel("PC2")
+        plt.xlabel("Dim 1")
+        plt.ylabel("Dim 2")
         plt.title(self.behavior_name)
         plt.legend()
+        plt.suptitle(self.dim_red_method)
         plt.show()
 
 
