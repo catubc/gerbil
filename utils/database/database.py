@@ -293,12 +293,15 @@ class CohortProcessor():
 
             start_time = self.start_times_absolute_minute[k]
 
+	        #chek to see if if the time is within in day (in mins) of the 
             good_time = False
             for pday_start in pday_starts:
-                if abs(start_time - pday_start)<(day_in_mins):
+                dd = start_time - pday_start
+                if dd < day_in_mins and dd>=0:
                     good_time=True
                     break
                     
+            # see if we're within
             if good_time==False:
                 continue
             x = temp[:,0]
