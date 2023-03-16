@@ -326,6 +326,30 @@ class CohortProcessor():
             x[idx] = np.nan
             y[idx] = np.nan
             z[idx] = np.nan
+            
+            # remove short chunks
+            inside = False
+            if np.isnan(x[0])==False:
+                inside=True
+                start = 0
+            idxs = []
+            for k in range(1,x.shape[0],1):
+                if np.isnan(x[k]):
+                    if inside:
+                        end = k
+                        if (k-start)<self.min_chunk_len:
+                            idxs.append(np.arange(start,end,1))
+                        inside=False
+                else:
+                    if inside==False:
+                        start = k
+                        inside=True
+            if len(idxs)>0:
+                idxs = np.hstack(idxs)
+                x[idxs] = np.nan
+                y[idxs] = np.nan
+                z[idxs] = np.nan
+                        
             #print (x.shape)
             ax.plot(x,y,z, c= 'blue',
                     linewidth=1,
