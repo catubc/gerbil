@@ -712,8 +712,6 @@ class Track():
     def save_updated_huddle_tracks(self, fname_out):
 
         #
-        #print (" # of detected tracks/huddles: ", len(self.final_merged_times))
-
         # make multi-huddle track
         self.tracks_huddles = np.zeros((self.tracks_spine.shape[0],
                                         len(self.final_merged_times),

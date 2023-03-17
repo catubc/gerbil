@@ -5,11 +5,12 @@ import parmap
 import glob
 
 from tqdm import tqdm
-import sleap
+import scipy
 import parmap
 from itertools import combinations
-
+import statistics
 #
+# TODO: bad solution
 import sys
 sys.path.append("/home/cat/code/gerbil/utils") # go to parent dir
 
@@ -168,7 +169,7 @@ class CohortProcessor():
             for fnames in tqdm(fnames_all):
                 self.remove_huddles(fnames)
 
-
+    #
     def remove_huddles(self,fnames):
 
         fname_features, fname_huddles = fnames[0], fnames[1]
@@ -202,7 +203,6 @@ class CohortProcessor():
         fname_out = fname_features.replace('.npy','_nohuddle.npy')
         np.save(fname_out, features)
 
-
     #
     def preprocess_huddle_tracks(self):
 
@@ -232,6 +232,89 @@ class CohortProcessor():
                 self.process_huddle_track(fname_slp,
 											self.fix_track_flag,
 											self.interpolate_flag,)
+
+    #
+    def load_huddle_tracks(self):
+
+        #
+        self.root_dir_features = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+                                              'huddles')
+
+        # add the name extensions to the file names
+        text = '_spine'
+        if self.fix_track_flag:
+           text = text + "_fixed"
+        if self.interpolate_flag:
+           text = text + "_interpolated"
+
+
+        #
+        fnames_slp = []
+        self.tracks_huddles = []
+        for k in range(self.fnames_slp.shape[0]):
+            fname = os.path.join(self.root_dir_features,
+							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_huddle.slp"
+            #
+            if os.path.exists(fname):
+                #
+                temp = np.load(os.path.join(fname[:-4]+text+".npy"))
+                self.tracks_huddles.append(temp)
+        #
+
+
+        #
+        print (" # of files: ", len(self.tracks_huddles))
+
+
+
+
+
+
+    #
+    def compute_huddle_composition(self):
+
+        #
+        if True:
+            self.huddle_comps_min = parmap.map(compute_huddle_parallel,
+                                          self.tracks_features,
+                                          self.median_filter_width,
+                                          pm_processes = 16,
+                                          pm_pbar = True
+                                          )
+        else:
+            self.huddle_comps_min = []
+            for s in trange(len(self.tracks_features)):
+                session = self.tracks_features[s]
+
+                huddle_comp = compute_huddle_parallel(session,
+                            self.median_filter_width)
+
+                self.huddle_comps.append(huddle_comp)
+
+
+    #
+    def load_feature_tracks(self):
+        #
+        self.root_dir_features = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+                                              'features')
+
+        #
+        self.tracks_features = []
+        self.tracks_features_pdays = []
+        self.tracks_features_start_times_absolute_mins = []
+        for k in range(self.fnames_slp.shape[0]):
+            fname = os.path.join(self.root_dir_features,self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+self.NN_type[k][0])+".slp"
+            if os.path.exists(fname):
+                #
+                self.fname_spine_saved = fname[:-4]+"_spine.npy"
+
+                #
+                self.tracks_features.append(np.load(self.fname_spine_saved))
+                self.tracks_features_pdays.append(self.PDays[k])
+                self.tracks_features_start_times_absolute_mins.append(self.start_times_absolute_minute[k])
+        #
+        print ("# of feature tracks: ", len(self.tracks_features))
 
     #
     def preprocess_feature_tracks(self):
@@ -998,3 +1081,59 @@ class CohortProcessor():
             plt.show()
 
         return dur_matrix_percentage
+
+#
+
+def compute_huddle_parallel(session,
+                            median_filter_width):
+
+    #
+    fps = 24
+
+    #
+    huddle_comp = np.ones((session.shape[0], session.shape[1]))
+    idx = np.where(np.isnan(session[:,:,0]))
+    huddle_comp[idx] = 0
+
+    res = []
+    for k in range(huddle_comp.shape[1]):
+        temp1 = scipy.signal.medfilt(huddle_comp[:,k], kernel_size=median_filter_width)
+        huddle_comp[:,k] = temp1
+
+        # split the data in 1min bins
+        idxs = np.arange(0,temp1.shape[0],fps*60)[1:]
+        temp2 = np.array(np.array_split(temp1, idxs))
+
+        # find the mode (most common element) in each 1min bin
+        temp3 = []
+        for t_ in temp2:
+            temp3.append(scipy.stats.mode(t_)[0])
+        res.append(np.hstack(temp3))
+
+    #
+    huddle_comp_min = np.vstack(res)
+    return huddle_comp_min
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
