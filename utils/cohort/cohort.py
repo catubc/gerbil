@@ -278,6 +278,7 @@ class CohortProcessor():
             self.huddle_comps_min = parmap.map(compute_huddle_parallel,
                                           self.tracks_features,
                                           self.median_filter_width,
+                                          self.n_frames_per_bin,
                                           pm_processes = 16,
                                           pm_pbar = True
                                           )
@@ -287,7 +288,9 @@ class CohortProcessor():
                 session = self.tracks_features[s]
 
                 huddle_comp = compute_huddle_parallel(session,
-                            self.median_filter_width)
+                                                        self.median_filter_width,
+                                                        self.n_frames_per_bin,
+                                                        )
 
                 self.huddle_comps.append(huddle_comp)
 
@@ -971,15 +974,18 @@ class CohortProcessor():
         pass
 
     def generate_huddle_composition_ethograms(self):
-        img = np.zeros((24*60,16*6))
-        #print (img.shape)
+        img_width = int(24*60*60*24/self.n_frames_per_bin)
+        img = np.zeros((img_width,16*6))
+        print ("size of img: ", img.shape)
+
 
         #
         for ctr,start in enumerate(self.tracks_features_start_times_absolute_mins):
             #
-            start_row = start//(24*60)#+15
-            start_col = start%(24*60)
-            #print (start, "start row: ", start_row)
+            start_frames = start*60*24//self.n_frames_per_bin
+            start_row = start_frames//(img_width)#+15
+            start_col = start_frames%(img_width)
+            #print (start_frames, "start row: ", start_row, " start _col: ", start_col)
 
             #
             for k in range(6):
@@ -1125,10 +1131,11 @@ class CohortProcessor():
 #
 
 def compute_huddle_parallel(tracks_features,
-                            median_filter_width):
+                            median_filter_width,
+                            n_frames_per_bin):
 
     #
-    fps = 24
+    #fps = 24
 
     # # time points , # of animals
     huddle_comp = np.zeros((tracks_features.shape[0], tracks_features.shape[1]))
@@ -1143,7 +1150,7 @@ def compute_huddle_parallel(tracks_features,
         huddle_comp[:,k] = temp1
 
         # split the data in 1min bins
-        idxs = np.arange(0,temp1.shape[0],fps*60)[1:]
+        idxs = np.arange(0,temp1.shape[0],n_frames_per_bin)[1:]
         temp2 = np.array(np.array_split(temp1, idxs))
 
         # find the mode (most common element) in each 1min bin
