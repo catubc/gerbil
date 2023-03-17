@@ -40,6 +40,8 @@ class Convert():
             with a focus on spine2, spine3, spine1 etc...
         '''
         #
+        print ("OLD FUNCTION DO NOT USE GET track spine cnetrers from here")
+
         fname_out = self.fname[:-4]+"_spine.npy"
         if os.path.exists(fname_out)==False:
             self.tracks_spine = np.zeros((self.tracks.shape[0],

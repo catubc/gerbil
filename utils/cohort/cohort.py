@@ -170,7 +170,7 @@ class CohortProcessor():
                 self.remove_huddles(fnames)
 
     #
-    def remove_huddles(self,fnames):
+    def remove_huddles(self, fnames):
 
         fname_features, fname_huddles = fnames[0], fnames[1]
 
@@ -307,7 +307,10 @@ class CohortProcessor():
                                     '.mp4','_'+self.NN_type[k][0])+".slp"
             if os.path.exists(fname):
                 #
-                self.fname_spine_saved = fname[:-4]+"_spine.npy"
+                if self.use_nohuddle:
+                    self.fname_spine_saved = fname[:-4]+"_spine_nohuddle.npy"
+                else:
+                    self.fname_spine_saved = fname[:-4]+"_spine.npy"
 
                 #
                 self.tracks_features.append(np.load(self.fname_spine_saved))
@@ -967,6 +970,43 @@ class CohortProcessor():
     def detect_audio(self):
         pass
 
+    def generate_huddle_composition_ethograms(self):
+        img = np.zeros((24*60,16*6))
+        #print (img.shape)
+
+        #
+        for ctr,start in enumerate(self.tracks_features_start_times_absolute_mins):
+            #
+            start_row = start//(24*60)#+15
+            start_col = start%(24*60)
+            #print (start, "start row: ", start_row)
+
+            #
+            for k in range(6):
+                #if k>2:
+                #    break
+                temp = self.huddle_comps_min[ctr][k].squeeze()
+                idx = np.where(temp==1)[0]
+                temp[idx] = k+1
+                len_ = min(img[start_col:start_col+temp.shape[0]].shape[0], temp.shape[0])
+                img[start_col:start_col+len_,start_row*6+k] = temp[:len_]
+
+        #
+        plt.figure(figsize=(10,5))
+        plt.imshow(img.T[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap="Accent_r"
+                  )
+
+        #
+        #yticks = np.arange(0,96,6)
+        #yticks_new = yticks//6 + 15
+        plt.ylabel("PDay")
+        plt.xlabel("Time (hr)")
+        plt.show()
+
     #
     def compute_pairwise_interactions(self,track):
 
@@ -1084,19 +1124,21 @@ class CohortProcessor():
 
 #
 
-def compute_huddle_parallel(session,
+def compute_huddle_parallel(tracks_features,
                             median_filter_width):
 
     #
     fps = 24
 
-    #
-    huddle_comp = np.ones((session.shape[0], session.shape[1]))
-    idx = np.where(np.isnan(session[:,:,0]))
-    huddle_comp[idx] = 0
+    # # time points , # of animals
+    huddle_comp = np.zeros((tracks_features.shape[0], tracks_features.shape[1]))
+    idx = np.where(np.isnan(tracks_features[:,:,0]))  # set all nans to potential values in the huddles
+    huddle_comp[idx] = 1  # if we can't find the track, animals probably in the huddle
 
     res = []
     for k in range(huddle_comp.shape[1]):
+
+        #
         temp1 = scipy.signal.medfilt(huddle_comp[:,k], kernel_size=median_filter_width)
         huddle_comp[:,k] = temp1
 
