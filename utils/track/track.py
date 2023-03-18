@@ -488,7 +488,8 @@ class Track():
             else:
                 # only a single track found throughout the entire dataset;
                 #print ("Single track animal: ", a, "idx: ", idx.shape, "  idx2: ", idx2.shape)
-                self.time_cont_tracks[a].append([0,idx[-1]])
+                #self.time_cont_tracks[a].append([0,idx[-1]])
+                pass
 
             # append all other tracks
             for i in range(1,idx2.shape[0],1):
@@ -979,8 +980,13 @@ class Track():
         # we do not want to swap parts of tracks as we assume continous tracks have single identities
 
         # check if any tracks start before start of current track but end during/after
-        idx = np.where(np.logical_and(track_local[:,0]<times_active_animal[0],
+        try:
+            idx = np.where(np.logical_and(track_local[:,0]<times_active_animal[0],
                                       track_local[:,1]>=times_active_animal[0]))[0]
+        except:
+            return False
+        #print ("idx: ", idx)                     
+        #idx = idx[0]
         if idx.shape[0]>0:
             return True
 
@@ -1016,7 +1022,11 @@ class Track():
 
             # grab chunk info
             #track_local = np.array(self.tracks_chunks[animal_id1])
-            track_local = np.array(self.tracks_chunks_fixed[animal_id1])
+            try:
+                track_local = np.array(self.tracks_chunks_fixed[animal_id1])
+            except:
+                print("track error...skipping")
+                continue
 
             # check if chunks overlap
             flag = self.check_chunk_overlap(times_active_animal,
@@ -1030,7 +1040,12 @@ class Track():
 
             ################### CURRENT ######################
             # if current track very long, make sure you don't change it
-            chunk_id = np.where(np.logical_and(t>=track_local[:,0], t<=track_local[:,1]))[0]
+            try:
+                chunk_id = np.where(np.logical_and(t>=track_local[:,0], t<=track_local[:,1]))[0]
+            except:
+                print("track error...skipping")
+                continue
+                
             if self.verbose:
                 print ("chunk id: ", chunk_id)
             if chunk_id.shape[0]>0:

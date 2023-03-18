@@ -42,89 +42,7 @@ class CohortProcessor():
         #self.list_methods()
 
     #
-    def process_feature_track(self, fname_slp):
-
-        if os.path.exists(fname_slp):
-
-            fname_spine_out = fname_slp.replace('.slp',"_spine.npy")
-            if os.path.exists(fname_spine_out):
-                return
-
-            t = track.Track(fname_slp)
-            t.track_type = 'features'
-
-            ###### parameters for computing body centroid #######
-            t.use_dynamic_centroid = True   # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
-                                                 # - advantage: much more robust to lost features
-                                                 # False: we fix the centroid to a specific body part
-                                                 # - advantage less jitter for some applications
-            t.centroid_body_id = [2]         # if centroid flag is False; we use this body part instead
-
-            ##### run track fixer #######
-            t.fix_all_tracks()
-
-            ##### join spatially close but temporally distant chunks #####
-            if False:
-                #
-                t.memory_interpolate_tracks_spine()
-
-            ##### save the fixed spines will overwrite the previous/defatul spine values####
-            t.save_centroid()
-
-
-    def process_huddle_track(self, fname_slp,
-                             fix_track_flag,
-                             interpolate_flag):
-
-        text = '_spine'
-        if fix_track_flag:
-           text = text + "_fixed"
-        if interpolate_flag:
-           text = text + "_interpolated"
-
-        #
-        fname_out = os.path.join(fname_slp[:-4]+text+".npy")
-
-        #
-        if os.path.exists(fname_out):
-            return
-
-        #
-        t = track.Track(fname_slp)
-        t.fix_track_flag = fix_track_flag
-        t.interpolate_flag = interpolate_flag
-
-        #############################################
-        ############# RUN TRACK FIXER ###############
-        #############################################
-        max_jump_allowed = 50,              # maximum distance that a gerbil can travel in 1 frame
-        max_dist_to_join = 50,              # maximum distnace between 2 chunks that can safely be merged
-        min_chunk_len = 25                  # shortest duration of
-
-        t.fix_huddles(max_jump_allowed,
-                          max_dist_to_join,
-                          min_chunk_len)
-
-        ##################################################
-        ################# RUN HUDDLE FIXER ###############
-        ##################################################
-
-        #
-        fps = 24
-        t.max_distance_huddle = 100                   # how far away we can merge huddles together (pixels)
-        t.max_time_to_join_huddle = fps*120            # how far in time can we merge huddle chunks (seconds x frames)
-        t.min_huddle_time = 120*fps                     # minimum huddle duration in seconds
-        t.memory_interpolate_huddle()
-
-        ##################################################
-        ############## SAVE FIXED TRACKS #################
-        ##################################################
-
-        ##### save the fixed spines will overwrite the previous/defatul spine values####
-        t.save_centroid()
-
-        #
-        t.save_updated_huddle_tracks(fname_out)
+   
 
     #
     def remove_huddles_from_feature_tracks(self):
@@ -220,8 +138,9 @@ class CohortProcessor():
                 fnames_slp.append(fname)
 
         #
+        print ("# of files: ", len(fname))
         if self.parallel:
-            parmap.map(self.process_huddle_track,
+            parmap.map(process_huddle_track,
                        fnames_slp,
                        self.fix_track_flag,
                        self.interpolate_flag,
@@ -229,7 +148,7 @@ class CohortProcessor():
                        pm_pbar = True)
         else:
             for fname_slp in tqdm(fnames_slp):
-                self.process_huddle_track(fname_slp,
+                process_huddle_track(fname_slp,
 											self.fix_track_flag,
 											self.interpolate_flag,)
 
@@ -340,13 +259,14 @@ class CohortProcessor():
 
         #
         if self.parallel:
-            parmap.map(self.process_feature_track,
-                   fnames_slp,
-                   pm_processes=self.n_cores,
-                   pm_pbar = True)
+            parmap.map(process_feature_track,
+                       fnames_slp,
+                       self.exclude_huddles,
+                       pm_processes=self.n_cores,
+                       pm_pbar = True)
         else:
             for fname_slp in tqdm(fnames_slp):
-                self.process_feature_track(fname_slp)
+                process_feature_track(fname_slp, self.exclude_huddles)
 
     #
     def show_3D_plots(self):
@@ -1164,10 +1084,90 @@ def compute_huddle_parallel(tracks_features,
     return huddle_comp_min
 
 
+def process_feature_track(fname_slp, exclude_huddles):
 
+    if os.path.exists(fname_slp):
 
+        fname_spine_out = fname_slp.replace('.slp',"_spine.npy")
+        if os.path.exists(fname_spine_out):
+            return
 
+        t = track.Track(fname_slp)
+        t.exclude_huddles = exclude_huddles
+        t.track_type = 'features'
 
+        ###### parameters for computing body centroid #######
+        t.use_dynamic_centroid = True   # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
+                                             # - advantage: much more robust to lost features
+                                             # False: we fix the centroid to a specific body part
+                                             # - advantage less jitter for some applications
+        t.centroid_body_id = [2]         # if centroid flag is False; we use this body part instead
+
+        ##### run track fixer #######
+        t.fix_all_tracks()
+
+        ##### join spatially close but temporally distant chunks #####
+        if False:
+            #
+            t.memory_interpolate_tracks_spine()
+
+        ##### save the fixed spines will overwrite the previous/defatul spine values####
+        t.save_centroid()
+
+#
+def process_huddle_track(fname_slp,
+						 fix_track_flag,
+						 interpolate_flag):
+
+	text = '_spine'
+	if fix_track_flag:
+	   text = text + "_fixed"
+	if interpolate_flag:
+	   text = text + "_interpolated"
+
+	#
+	fname_out = os.path.join(fname_slp[:-4]+text+".npy")
+
+	#
+	if os.path.exists(fname_out):
+		return
+
+	#
+	t = track.Track(fname_slp)
+	t.fix_track_flag = fix_track_flag
+	t.interpolate_flag = interpolate_flag
+
+	#############################################
+	############# RUN TRACK FIXER ###############
+	#############################################
+	max_jump_allowed = 50,              # maximum distance that a gerbil can travel in 1 frame
+	max_dist_to_join = 50,              # maximum distnace between 2 chunks that can safely be merged
+	min_chunk_len = 25                  # shortest duration of
+
+	t.fix_huddles(max_jump_allowed,
+					  max_dist_to_join,
+					  min_chunk_len)
+
+	##################################################
+	################# RUN HUDDLE FIXER ###############
+	##################################################
+
+	#
+	fps = 24
+	t.max_distance_huddle = 100                   # how far away we can merge huddles together (pixels)
+	t.max_time_to_join_huddle = fps*120            # how far in time can we merge huddle chunks (seconds x frames)
+	t.min_huddle_time = 120*fps                     # minimum huddle duration in seconds
+	t.memory_interpolate_huddle()
+
+	##################################################
+	############## SAVE FIXED TRACKS #################
+	##################################################
+
+	##### save the fixed spines will overwrite the previous/defatul spine values####
+	t.save_centroid()
+
+	#
+	t.save_updated_huddle_tracks(fname_out)
 
 
 
