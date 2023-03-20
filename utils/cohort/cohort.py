@@ -194,24 +194,25 @@ class CohortProcessor():
 
         #
         if True:
-            self.huddle_comps_min = parmap.map(compute_huddle_parallel,
-                                          self.tracks_features,
-                                          self.median_filter_width,
-                                          self.n_frames_per_bin,
-                                          pm_processes = 16,
-                                          pm_pbar = True
-                                          )
+            self.huddle_comps_binned = parmap.map(compute_huddle_parallel,
+											   self.tracks_features,
+											   #self.tracks_features[:50],
+											   self.median_filter_width,
+											   self.n_frames_per_bin,
+											   pm_processes = self.n_cores,
+											   pm_pbar = True
+											   )
         else:
-            self.huddle_comps_min = []
+            self.huddle_comps_binned = []
             for s in trange(len(self.tracks_features)):
                 session = self.tracks_features[s]
 
-                huddle_comp = compute_huddle_parallel(session,
+                huddle_comp_binned = compute_huddle_parallel(session,
                                                         self.median_filter_width,
                                                         self.n_frames_per_bin,
                                                         )
 
-                self.huddle_comps.append(huddle_comp)
+                self.huddle_comps_binned.append(huddle_comp_binned)
 
 
     #
@@ -224,6 +225,7 @@ class CohortProcessor():
         self.tracks_features = []
         self.tracks_features_pdays = []
         self.tracks_features_start_times_absolute_mins = []
+        self.tracks_features_start_times_absolute_sec = []
         for k in range(self.fnames_slp.shape[0]):
             fname = os.path.join(self.root_dir_features,self.fnames_slp[k][0]).replace(
                                     '.mp4','_'+self.NN_type[k][0])+".slp"
@@ -238,6 +240,7 @@ class CohortProcessor():
                 self.tracks_features.append(np.load(self.fname_spine_saved))
                 self.tracks_features_pdays.append(self.PDays[k])
                 self.tracks_features_start_times_absolute_mins.append(self.start_times_absolute_minute[k])
+                self.tracks_features_start_times_absolute_sec.append(self.start_times_absolute_sec[k])
         #
         print ("# of feature tracks: ", len(self.tracks_features))
 
@@ -421,18 +424,31 @@ class CohortProcessor():
         self.start_times_military = np.array(df.loc[:,'Start time'])
 
         # generate absolute start times for the data:
+        fps = 24
         self.start_times_absolute_minute = []
+        self.start_times_absolute_frame = []
+        self.start_times_absolute_sec = []
         for k in range(len(self.start_times_military)):
             time = self.start_times_military[k]
-            time = [time.hour, time.minute]
+            #time = [time.hour, time.minute, time.second]
             pday = int(self.PDays[k][1:])
 
-            #
+            # get minutes
             pday_abs = pday - 15
-            time_in_mins = time[0]*60 + time[1]
-            abs_time_in_mins = pday_abs*24*60 + time_in_mins
-            ##print ("pday_abs: ", pday_abs, " , abs_time_in_mins: ", abs_time_in_mins)
+            
+            # get time in mins
+            time_in_mins = time.hour*60 + time.minute
+            abs_time_in_mins = pday_abs*24*60 + time_in_mins  # convert from day to minute;
             self.start_times_absolute_minute.append(abs_time_in_mins)
+            
+            # get time in sec
+            time_in_sec = time.hour*60*60 + time.minute*60
+            abs_time_in_sec = pday_abs*24*60*60 + time_in_sec  # convert from day to minute;
+            self.start_times_absolute_sec.append(abs_time_in_sec)
+            
+            #
+            time_in_frames= time.hour*60*60*fps+time.minute*60*fps +time.second*fps
+            self.start_times_absolute_frame.append(time_in_frames)
 
     #
     def list_methods(self):
@@ -894,28 +910,59 @@ class CohortProcessor():
         pass
 
     def generate_huddle_composition_ethograms(self):
-        img_width = int(24*60*60*24/self.n_frames_per_bin)
+	    
+        #fps = 24
+        # img width in binned values  hrs x mins x sec x fps
+        img_width = int(24*60*60*self.video_frame_rate/self.n_frames_per_bin)
         img = np.zeros((img_width,16*6))
-        print ("size of img: ", img.shape)
+        img_flattened = np.zeros((img_width*16,6))
+        print ("size of img: ", img.shape, " size of flatten image: ", img_flattened.shape)
 
 
         #
-        for ctr,start in enumerate(self.tracks_features_start_times_absolute_mins):
+        # loop over every recording
+        for ctr,start in enumerate(tqdm(self.tracks_features_start_times_absolute_sec)):
+            
             #
-            start_frames = start*60*24//self.n_frames_per_bin
-            start_row = start_frames//(img_width)#+15
-            start_col = start_frames%(img_width)
-            #print (start_frames, "start row: ", start_row, " start _col: ", start_col)
+            start_frames = start*self.video_frame_rate//self.n_frames_per_bin
+            #start_row = start_frames//(img_width)#+15
+            #start_row_flatten = start_frames #//(img_width)#+15
+            #start_col = start_frames%(img_width)
+            start_col_flatten = start_frames #%(img_width)
+            #print (self.fnames_slp[ctr], "start frames: ", start_frames, "start row: ", start_row, " start _col: ", start_col)
 
-            #
-            for k in range(6):
+            # loop over animals
+            #print ("start-col: ", start_col_flatten)
+            for k in range(len(self.huddle_comps_binned[0])):
+                start_row_flatten = k
                 #if k>2:
                 #    break
-                temp = self.huddle_comps_min[ctr][k].squeeze()
+                try:
+                    temp = self.huddle_comps_binned[ctr][k].squeeze()
+                except:
+                    continue
                 idx = np.where(temp==1)[0]
                 temp[idx] = k+1
-                len_ = min(img[start_col:start_col+temp.shape[0]].shape[0], temp.shape[0])
-                img[start_col:start_col+len_,start_row*6+k] = temp[:len_]
+                len_ = min(img_flattened[start_col_flatten:start_col_flatten+temp.shape[0]].shape[0], temp.shape[0])
+                #print ("len: ", len_)
+                #img[start_col:start_col+len_,start_row*6+k] = temp[:len_]
+                img_flattened[start_col_flatten:start_col_flatten+len_,start_row_flatten] = temp[:len_]
+                
+                # pad the next 10% of the data with the last 10% of the data
+                if True:
+                    pad_len = temp.shape[0]//3
+                    #print ("pad len: ", pad_len, " len_: ", len_, "temp: ", temp.shape)
+                    #try:
+                    img_flattened[start_col_flatten+len_:start_col_flatten+ len_+pad_len, start_row_flatten] = temp[:len_][-pad_len:]
+        # remake non-flattened images
+        ctr=0
+        for k in range(0, img_flattened.shape[0], img_width):
+            temp = img_flattened[k:k+img_width]
+            #print (ctr, int(ctr*6), int((ctr+1)*6), k, k+img_width)
+            img[:,int(ctr*6):int((ctr+1)*6)] = temp
+            ctr+=1
+        img = np.array(img)
+        #print ("img.sha: ", img.shape)
 
         #
         plt.figure(figsize=(10,5))
@@ -1069,7 +1116,7 @@ def compute_huddle_parallel(tracks_features,
         temp1 = scipy.signal.medfilt(huddle_comp[:,k], kernel_size=median_filter_width)
         huddle_comp[:,k] = temp1
 
-        # split the data in 1min bins
+        # split the data in # bins as per the variable
         idxs = np.arange(0,temp1.shape[0],n_frames_per_bin)[1:]
         temp2 = np.array(np.array_split(temp1, idxs))
 
@@ -1080,8 +1127,8 @@ def compute_huddle_parallel(tracks_features,
         res.append(np.hstack(temp3))
 
     #
-    huddle_comp_min = np.vstack(res)
-    return huddle_comp_min
+    huddle_comp_binned = np.vstack(res)
+    return huddle_comp_binned
 
 
 def process_feature_track(fname_slp, exclude_huddles):
