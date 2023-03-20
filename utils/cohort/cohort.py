@@ -943,17 +943,16 @@ class CohortProcessor():
                     continue
                 idx = np.where(temp==1)[0]
                 temp[idx] = k+1
-                len_ = min(img_flattened[start_col_flatten:start_col_flatten+temp.shape[0]].shape[0], temp.shape[0])
+                len_ = temp.shape[0]
                 #print ("len: ", len_)
                 #img[start_col:start_col+len_,start_row*6+k] = temp[:len_]
                 img_flattened[start_col_flatten:start_col_flatten+len_,start_row_flatten] = temp[:len_]
                 
                 # pad the next 10% of the data with the last 10% of the data
                 if True:
-                    pad_len = temp.shape[0]//3
-                    #print ("pad len: ", pad_len, " len_: ", len_, "temp: ", temp.shape)
-                    #try:
-                    img_flattened[start_col_flatten+len_:start_col_flatten+ len_+pad_len, start_row_flatten] = temp[:len_][-pad_len:]
+                    pad_len = int(temp.shape[0]*self.forward_padding/100)
+                    temp = np.hstack((temp,temp,temp,temp,temp,temp,temp,temp))
+                    img_flattened[start_col_flatten+len_:start_col_flatten+ len_+pad_len, start_row_flatten] = temp[:pad_len]
         # remake non-flattened images
         ctr=0
         for k in range(0, img_flattened.shape[0], img_width):
