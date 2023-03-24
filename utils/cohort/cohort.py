@@ -42,9 +42,6 @@ class CohortProcessor():
         #self.list_methods()
 
     #
-   
-
-    #
     def remove_huddles_from_feature_tracks(self):
 
         #
@@ -79,59 +76,30 @@ class CohortProcessor():
         fnames_all = list(zip(fnames_slp_features,fnames_slp_huddle))
 
         if self.parallel:
-            parmap.map(self.remove_huddles,
+            parmap.map(remove_huddles,
                        fnames_all,
+                       self.huddle_min_distance,
                        pm_processes=self.n_cores,
                        pm_pbar = True)
         else:
             for fnames in tqdm(fnames_all):
-                self.remove_huddles(fnames)
+                remove_huddles(fnames,
+                    self.huddle_min_distance)
 
     #
-    def remove_huddles(self, fnames):
 
-        fname_features, fname_huddles = fnames[0], fnames[1]
-
-        #
-        huddles = np.load(fname_huddles)
-        features = np.load(fname_features)
-
-        #
-        for k in range(huddles.shape[0]):
-
-            h_locs = huddles[k]
-            
-            for h_loc in h_locs:
-                
-                if np.isnan(h_loc[0]):
-                    continue
-                #print (h_loc)
-
-                f_loc = features[k]
-                #print ("h_loc: ", h_loc.shape, "  f_loc: ", f_loc.shape)
-
-                dists = np.linalg.norm(f_loc-h_loc,axis=1)
-                #print ("dists: ", dists)
-
-                # set
-                idx = np.where(dists<=self.huddle_min_distance)
-                #print ("idx: ", idx)
-                features[k,idx]=np.nan
-
-        fname_out = fname_features.replace('.npy','_nohuddle.npy')
-        np.save(fname_out, features)
 
     #
     def preprocess_huddle_tracks(self):
 
         #
-        self.root_dir_features = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+        self.root_dir_huddles = os.path.join(os.path.split(self.fname_spreadsheet)[0],
                                               'huddles')
 
         #
         fnames_slp = []
         for k in range(self.fnames_slp.shape[0]):
-            fname = os.path.join(self.root_dir_features,
+            fname = os.path.join(self.root_dir_huddles,
 							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_huddle.slp"
             #
             if os.path.exists(fname):
@@ -151,6 +119,94 @@ class CohortProcessor():
                 process_huddle_track(fname_slp,
 											self.fix_track_flag,
 											self.interpolate_flag,)
+											
+											
+		##################### PROCESS MIXED VIDEOS ###########
+        all_fnames = []
+        for k in range(self.NN_type.shape[0]):
+            #print (self.NN_type[k][0])
+            if self.NN_type[k][0]=='Both':
+                fname_day = os.path.join(self.root_dir_huddles,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Day')+"_huddle.slp"
+                fname_night = os.path.join(self.root_dir_huddles,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Night')+"_huddle.slp"
+                                    
+                all_fnames.append(fname_day)
+                all_fnames.append(fname_night)
+                
+        if self.parallel:
+            parmap.map(process_huddle_track,
+                       all_fnames,
+                       self.fix_track_flag,
+                       self.interpolate_flag,
+                       pm_processes=self.n_cores,
+                       pm_pbar = True)
+        else:
+            for fname_slp in tqdm(all_fnames):
+                process_huddle_track(fname_slp,
+                                            self.fix_track_flag,
+                                            self.interpolate_flag,)
+        
+        ##################################
+        ####### MERGE HYBRID VIDS ########      
+        ##################################
+        for k in range(self.NN_type.shape[0]):
+
+            if self.NN_type[k][0]=='Both':
+                fname_day = os.path.join(self.root_dir_huddles,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Day')+"_huddle.slp"
+                fname_night = os.path.join(self.root_dir_huddles,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Night')+"_huddle.slp"
+                light_switch = self.light_switch[k].replace(' ', '').split(',')
+                time = light_switch[0]
+                idx = time.index(":")
+                time_in_frames = int(time[:idx])*60*self.fps + int(time[idx+1:])*self.fps
+
+                #
+                order = [light_switch[1], light_switch[2]]
+  
+                print ("light_switch time: ", time, time_in_frames, order)
+
+                # process day
+                try:
+                    #fname_slp = fname_day
+                    track_day = np.load(fname_day.replace('.slp','_spine_fixed_interpolated.npy'))
+                except:
+                    print ("Missing: ", fname_day)
+                    continue
+                    
+                try:
+                    # process night 
+                    track_night = np.load(fname_night.replace('.slp','_spine_fixed_interpolated.npy'))  
+                except:
+                    print ("Missing: ", fname_night)
+                    continue
+  
+                final_track = np.zeros(track_day.shape)+np.nan
+                max_huddles = min(track_day.shape[1], track_night.shape[1])
+                if order[0]=='day':
+                    # merge order day -> night
+                    final_track[:time_in_frames,:max_huddles] = track_day[:time_in_frames,:max_huddles]
+                    final_track[time_in_frames:,:max_huddles] = track_night[time_in_frames:,:max_huddles]
+
+                else:
+                    # merge order night -> day
+                    final_track[:time_in_frames,:max_huddles] = track_night[:time_in_frames,:max_huddles]
+                    final_track[time_in_frames:,:max_huddles] = track_day[time_in_frames:,:max_huddles]            
+                #
+                fname_both = os.path.join(self.root_dir_huddles,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Both')+"_huddle_spine_fixed_interpolated.npy"
+                                    
+                np.save(fname_both, final_track)
+                													
+											
+											
+											
 
     #
     def load_huddle_tracks(self):
@@ -172,12 +228,14 @@ class CohortProcessor():
         self.tracks_huddles = []
         for k in range(self.fnames_slp.shape[0]):
             fname = os.path.join(self.root_dir_features,
-							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_huddle.slp"
+							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_huddle" +text+".npy"
             #
             if os.path.exists(fname):
                 #
-                temp = np.load(os.path.join(fname[:-4]+text+".npy"))
-                self.tracks_huddles.append(temp)
+                #temp = np.load(os.path.join(fname[:-4]+text+".npy"))
+                self.tracks_huddles.append(fname)
+            else:
+                print ("Missing: ", fname)
         #
 
 
@@ -229,7 +287,8 @@ class CohortProcessor():
         for k in range(self.fnames_slp.shape[0]):
             fname = os.path.join(self.root_dir_features,self.fnames_slp[k][0]).replace(
                                     '.mp4','_'+self.NN_type[k][0])+".slp"
-            if os.path.exists(fname):
+            try:
+                #if os.path.exists(fname):
                 #
                 if self.use_nohuddle:
                     self.fname_spine_saved = fname[:-4]+"_spine_nohuddle.npy"
@@ -241,13 +300,15 @@ class CohortProcessor():
                 self.tracks_features_pdays.append(self.PDays[k])
                 self.tracks_features_start_times_absolute_mins.append(self.start_times_absolute_minute[k])
                 self.tracks_features_start_times_absolute_sec.append(self.start_times_absolute_sec[k])
+            except:
+                print ("missing fname: ", fname)
         #
         print ("# of feature tracks: ", len(self.tracks_features))
 
     #
     def preprocess_feature_tracks(self):
 
-        #
+        #################### PROCESS DAY/NIGHT VIDOES ########
         self.root_dir_features = os.path.join(os.path.split(self.fname_spreadsheet)[0],
                                               'features')
 
@@ -271,6 +332,87 @@ class CohortProcessor():
             for fname_slp in tqdm(fnames_slp):
                 process_feature_track(fname_slp, self.exclude_huddles)
 
+        ##################### PROCESS MIXED VIDEOS ###########
+        all_fnames = []
+        for k in range(self.NN_type.shape[0]):
+            #print (self.NN_type[k][0])
+            if self.NN_type[k][0]=='Both':
+                fname_day = os.path.join(self.root_dir_features,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Day')+".slp"
+                fname_night = os.path.join(self.root_dir_features,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Night')+".slp"
+                                    
+                all_fnames.append(fname_day)
+                all_fnames.append(fname_night)
+        
+        if self.parallel:
+            parmap.map(process_feature_track,
+                       all_fnames,
+                       self.exclude_huddles,
+                       pm_processes=self.n_cores,
+                       pm_pbar = True)
+        else:
+            for fname_slp in tqdm(all_fnames):
+                process_feature_track(fname_slp, self.exclude_huddles)  
+        
+        ##################################
+        ####### MERGE HYBRID VIDS ########      
+        ##################################
+        for k in range(self.NN_type.shape[0]):
+            #print (self.NN_type[k][0])
+            if self.NN_type[k][0]=='Both':
+                fname_day = os.path.join(self.root_dir_features,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Day')+".slp"
+                fname_night = os.path.join(self.root_dir_features,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Night')+".slp"
+                light_switch = self.light_switch[k].replace(' ', '').split(',')
+                time = light_switch[0]
+                idx = time.index(":")
+                time_in_frames = int(time[:idx])*60*self.fps + int(time[idx+1:])*self.fps
+
+                #
+                order = [light_switch[1], light_switch[2]]
+  
+                # process day
+                try:
+                    #fname_slp = fname_day
+                    track_day = np.load(fname_day.replace('.slp','_spine.npy'))
+                except:
+                    print ("Missing: ", fname_day)
+                    continue
+                    
+                try:
+                    # process night 
+                    track_night = np.load(fname_night.replace('.slp','_spine.npy'))  
+                except:
+                    print ("Missing: ", fname_night)
+                    continue
+  
+                #print ("light_switch time: ", time, time_in_frames, order)
+                final_track = np.zeros(track_day.shape)+np.nan
+                max_gerbils = min(track_day.shape[1], track_night.shape[1])
+                if order[0]=='day':
+                    # merge order day -> night
+                    final_track[:time_in_frames,:max_gerbils] = track_day[:time_in_frames,:max_gerbils]
+                    final_track[time_in_frames:,:max_gerbils] = track_night[time_in_frames:,:max_gerbils]
+
+                else:
+                    # merge order night -> day
+                    final_track[:time_in_frames,:max_gerbils] = track_night[:time_in_frames,:max_gerbils]
+                    final_track[time_in_frames:,:max_gerbils] = track_day[time_in_frames:,:max_gerbils]
+            
+                #
+                fname_both = os.path.join(self.root_dir_features,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Both')+"_spine.npy"
+                                    
+                np.save(fname_both, final_track)
+                
+                
     #
     def show_3D_plots(self):
 
@@ -419,6 +561,9 @@ class CohortProcessor():
 
         #
         self.NN_type = np.vstack(df.loc[:,'NN Type'].iloc[idx].tolist())
+        
+        #
+        self.light_switch = df.loc[:,"Time of Light Switch"]
 
         #
         self.start_times_military = np.array(df.loc[:,'Start time'])
@@ -1217,6 +1362,39 @@ def process_huddle_track(fname_slp,
 
 
 
+def remove_huddles(fnames,
+				  huddle_min_distance):
+
+    fname_features, fname_huddles = fnames[0], fnames[1]
+
+    #
+    huddles = np.load(fname_huddles)
+    features = np.load(fname_features)
+
+    #
+    for k in range(huddles.shape[0]):
+
+        h_locs = huddles[k]
+        
+        for h_loc in h_locs:
+            
+            if np.isnan(h_loc[0]):
+                continue
+            #print (h_loc)
+
+            f_loc = features[k]
+            #print ("h_loc: ", h_loc.shape, "  f_loc: ", f_loc.shape)
+
+            dists = np.linalg.norm(f_loc-h_loc,axis=1)
+            #print ("dists: ", dists)
+
+            # set
+            idx = np.where(dists<=huddle_min_distance)
+            #print ("idx: ", idx)
+            features[k,idx]=np.nan
+
+    fname_out = fname_features.replace('.npy','_nohuddle.npy')
+    np.save(fname_out, features)
 
 
 

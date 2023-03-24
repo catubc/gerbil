@@ -85,9 +85,11 @@ class Track():
 
         keys = hf.keys()
         group2 = hf.get('tracks')
+        #print ("Group2: ", group2)
 
         tracks = []
         for k in range(len(group2)):
+			
             tracks.append(group2[k])
 
         tracks = np.array(tracks).transpose(3, 0, 2, 1)
@@ -148,12 +150,14 @@ class Track():
             with a focus on spine2, spine3, spine1 etc...
         '''
         #
-
-        if self.exclude_huddles:
-            fname_spine = self.fname_slp[:-4]+"_spine_nohuddle.npy"
-
+        fname_spine = self.fname_slp[:-4]+"_spine.npy"
+        
+        # if we are loading features we have option to drop the huddles
+        if self.track_type == 'huddle':
+            pass
         else:
-            fname_spine = self.fname_slp[:-4]+"_spine.npy"
+            if self.exclude_huddles:
+                fname_spine = self.fname_slp[:-4]+"_spine_nohuddle.npy"
 
         #
         if os.path.exists(fname_spine)==False or self.recompute_spine_centres==True:
@@ -948,6 +952,7 @@ class Track():
         #track_local = np.array(self.tracks_chunks[animal_id1])
         track_local = np.array(self.tracks_chunks_fixed[animal_id1])
         chunk_current = []
+        #print ("t: ", t, " track local: ", track_local.shape)
         while len(chunk_current)==0:
             chunk_current = np.where(np.logical_and(t>=track_local[:,0], t<=track_local[:,1]))[0]
 
@@ -1356,11 +1361,12 @@ class Track():
             temp = []
             for i in range(self.n_animals):
                 # grab all tracks for each animal
-                temp2 = np.array(self.tracks_chunks_fixed[i])
+                try:
+					# note this sometimes failes because of too few skeletosn
+                    temp2 = np.array(self.tracks_chunks_fixed[i])
 
                 # append all track starts that occur after current time;
                 # TODO: this may skip tracks that start at the same time...
-                try:
                     next_chunk_time = np.where(temp2[:,0]>t)[0]
                     temp.append(temp2[next_chunk_time,0][0])
                 except:
