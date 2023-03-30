@@ -273,7 +273,7 @@ class CohortProcessor():
         #
         if True:
             self.huddle_comps_binned = parmap.map(compute_huddle_parallel,
-											   self.tracks_features,
+											   self.tracks_features_fnames,
 											   #self.tracks_features[:50],
 											   self.median_filter_width,
 											   self.n_frames_per_bin,
@@ -304,6 +304,7 @@ class CohortProcessor():
         self.tracks_features_pdays = []
         self.tracks_features_start_times_absolute_mins = []
         self.tracks_features_start_times_absolute_sec = []
+        self.tracks_features_fnames = []
         for k in range(self.fnames_slp.shape[0]):
             fname = os.path.join(self.root_dir_features,self.fnames_slp[k][0]).replace(
                                     '.mp4','_'+self.NN_type[k][0])+".slp"
@@ -316,6 +317,7 @@ class CohortProcessor():
                     self.fname_spine_saved = fname[:-4]+"_spine.npy"
 
                 #
+                self.tracks_features_fnames.append(self.fname_spine_saved)
                 self.tracks_features.append(np.load(self.fname_spine_saved))
                 self.tracks_features_pdays.append(self.PDays[k])
                 self.tracks_features_start_times_absolute_mins.append(self.start_times_absolute_minute[k])
@@ -1077,6 +1079,103 @@ class CohortProcessor():
     def detect_audio(self):
         pass
 
+
+
+
+    def show_huddle_composition_ethogram_specific_animals(self, animal_ids):
+        
+        #
+        animal_vals = np.arange(1,7,1)
+        full_huddle_val = np.arange(7).sum()
+        #
+        #print (self.huddle_ethogram.shape, self.huddle_ethogram[:10])
+        full_huddle = []
+        for k in range(0,self.huddle_ethogram.shape[1],6):
+            temp = self.huddle_ethogram[:,k:k+6]
+
+            stack = np.zeros(temp.shape[0])
+            for animal_id in animal_ids:
+                temp_temp = temp[:,animal_id]
+                idx = np.where(temp_temp==animal_vals[animal_id])[0]
+                stack[idx]+=1
+            
+            idx = np.where(stack==len(animal_ids))
+            stack[:] = 0
+            stack[idx] = 1
+            full_huddle.append(stack)
+            
+        full_huddle = np.vstack(full_huddle)
+ 
+        plt.figure(figsize=(10,5))
+        plt.imshow(full_huddle[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap="viridis"
+                  )
+
+        #
+        #yticks = np.arange(0,96,6)
+        #yticks_new = yticks//6 + 15
+        plt.ylabel("PDay")
+        plt.xlabel("Time (hr)")
+        plt.title("Animals Huddle "+str(animal_ids))
+        plt.show()
+
+    def show_huddle_composition_ethogram_full_huddle(self):
+        
+        #
+        full_huddle_val = np.arange(7).sum()
+        #
+        #print (self.huddle_ethogram.shape, self.huddle_ethogram[:10])
+        full_huddle = []
+        for k in range(0,self.huddle_ethogram.shape[1],6):
+            temp = self.huddle_ethogram[:,k:k+6]
+            #print (temp.shape)
+            temp = temp.sum(1)
+            #print ("temp sum: ", temp.shape)
+            idx = np.where(temp==full_huddle_val)[0]
+            temp[:] = 0
+            temp[idx] = 1
+            full_huddle.append(temp)
+            
+        full_huddle = np.vstack(full_huddle)
+ 
+        plt.figure(figsize=(10,5))
+        plt.imshow(full_huddle[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap="viridis"
+                  )
+
+        #
+        #yticks = np.arange(0,96,6)
+        #yticks_new = yticks//6 + 15
+        plt.ylabel("PDay")
+        plt.xlabel("Time (hr)")
+        plt.title("Full Huddle Ethogram")
+        plt.show()
+
+
+    def show_huddle_composition_ethogram_all_animals(self):
+        
+ #
+        plt.figure(figsize=(10,5))
+        plt.imshow(self.huddle_ethogram.T[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap="Accent_r"
+                  )
+
+        #
+        #yticks = np.arange(0,96,6)
+        #yticks_new = yticks//6 + 15
+        plt.ylabel("PDay")
+        plt.xlabel("Time (hr)")
+        plt.show()
+
     def generate_huddle_composition_ethograms(self):
 	    
         #fps = 24
@@ -1128,24 +1227,10 @@ class CohortProcessor():
             #print (ctr, int(ctr*6), int((ctr+1)*6), k, k+img_width)
             img[:,int(ctr*6):int((ctr+1)*6)] = temp
             ctr+=1
-        img = np.array(img)
+        self.huddle_ethogram = np.array(img)
         #print ("img.sha: ", img.shape)
 
-        #
-        plt.figure(figsize=(10,5))
-        plt.imshow(img.T[::-1],
-                  aspect='auto',
-                  interpolation = "None",
-                  extent= [0,24,14.5,30.5],
-                  cmap="Accent_r"
-                  )
-
-        #
-        #yticks = np.arange(0,96,6)
-        #yticks_new = yticks//6 + 15
-        plt.ylabel("PDay")
-        plt.xlabel("Time (hr)")
-        plt.show()
+       
 
     #
     def compute_pairwise_interactions(self,track):
@@ -1264,12 +1349,12 @@ class CohortProcessor():
 
 #
 
-def compute_huddle_parallel(tracks_features,
+def compute_huddle_parallel(tracks_features_fname,
                             median_filter_width,
                             n_frames_per_bin):
 
     #
-    #fps = 24
+    tracks_features = np.load(tracks_features_fname)
 
     # # time points , # of animals
     huddle_comp = np.zeros((tracks_features.shape[0], tracks_features.shape[1]))
@@ -1295,9 +1380,15 @@ def compute_huddle_parallel(tracks_features,
 
     #
     huddle_comp_binned = np.vstack(res)
+    
+    fname_out = tracks_features_fname[:-4]+"_huddle_ethogram.npy"
+    
+    np.save(fname_out, huddle_comp_binned)
+    
+    
     return huddle_comp_binned
 
-#
+#hudd
 def process_feature_track(fname_slp, exclude_huddles):
 
     if os.path.exists(fname_slp):
