@@ -54,12 +54,12 @@ class Track():
     #
     def load_slp(self):
 		
-        print(self.fname_slp)
+        #print(self.fname_slp)
 
         self.slp = sleap.load_file(self.fname_slp)
 
     #
-    def slp_to_h5(self):
+    def slp_to_h5(self, overwrite=False):
 
         fname_h5 = self.fname_slp[:-4] + ".h5"
         if self.slp is None:
@@ -86,11 +86,29 @@ class Track():
         keys = hf.keys()
         group2 = hf.get('tracks')
         #print ("Group2: ", group2)
+        
+        try:
+            tracks = []
+            for k in range(len(group2)):
+                
+                tracks.append(group2[k])
+        except:
+            os.remove(fname_h5)
+            self.load_slp()
+            self.slp.export(fname_h5)
+            
+            hf = h5py.File(fname_h5, 'r')
 
-        tracks = []
-        for k in range(len(group2)):
-			
-            tracks.append(group2[k])
+            keys = hf.keys()
+            group2 = hf.get('tracks')
+            #print ("Group2: ", group2)
+        
+            #
+            tracks = []
+            for k in range(len(group2)):
+                
+                tracks.append(group2[k])
+                
 
         tracks = np.array(tracks).transpose(3, 0, 2, 1)
 
@@ -139,7 +157,7 @@ class Track():
     #
     def save_centroid(self):
 
-        print ("saving centroid")
+        #print ("saving centroid")
 
         self.fname_spine_saved = self.fname_slp[:-4]+"_spine.npy"
         np.save(self.fname_spine_saved, self.tracks_spine)
@@ -467,7 +485,7 @@ class Track():
             Loop over the tcrs and check if jumps are too high to re-break track
         '''
 
-        print ("... Making tracks chunks...")
+        #print ("... Making tracks chunks...")
 
         # break distances that are very large over single jumps
         # join by time
@@ -572,10 +590,10 @@ class Track():
 
         # loop over all segs
         #print (" Total # of starting huddle segments: ", len(all_segs))
-        with tqdm(total=len(all_segs),
-                  position=0, leave=True,
-                  desc='Remaining inner segments to analyze') as pbar:
-
+        #with tqdm(total=len(all_segs),
+        #          position=0, leave=True,
+        #          desc='Remaining inner segments to analyze') as pbar:
+        if True:
             #
             while len(all_segs)>0:
 
@@ -586,7 +604,8 @@ class Track():
                 del all_segs[0]
 
                 #
-                pbar.set_description("Remaining segs to process "+ str(len(all_segs)))
+                if False:
+                    pbar.set_description("Remaining segs to process "+ str(len(all_segs)))
 
                 #
                 all_segs_inner = all_segs.copy()
@@ -641,11 +660,13 @@ class Track():
                             diff = mean_previous-self.tracks_spine_fixed[seg_next[0]:seg_next[1]]
                             dist = np.min(np.linalg.norm(diff, axis=1))
                         except:
-                            print ("seg_next: ", seg_next)
-                            print ("merged_locs_temp: ", merged_locs_temp)
-                            print ("mean_previous: ", mean_previous)
-                            print ("dist: ", dist)
-                            print ("diff : ", diff.shape)
+                            dist = 1E3
+                            pass #print ("error in computing distance between huddle segs...")
+                            #print ("seg_next: ", seg_next)
+                            #print ("merged_locs_temp: ", merged_locs_temp)
+                            ##print ("mean_previous: ", mean_previous)
+                            #print ("dist: ", dist)
+                            #print ("diff : ", diff.shape)
 
                     # compute time between last chunk and current chunk
                     time_diff =  seg_next[0] - seg_current[1]
@@ -658,7 +679,8 @@ class Track():
                         try:
                             temp_locs = np.zeros((seg_next[0] - seg_current[1],2))+loc_current
                         except:
-                            print ("broke here: seg_next: ", seg_next, " seg_current: ", seg_current)
+                            pass
+                            #print ("broke here: seg_next: ", seg_next, " seg_current: ", seg_current)
 
 
                         # add distance in between
@@ -946,7 +968,6 @@ class Track():
     def get_chunk_info(self,
                        animal_id1,
                        t):
-
 
         ################### CURRENT ######################
         #track_local = np.array(self.tracks_chunks[animal_id1])
@@ -1282,7 +1303,7 @@ class Track():
                    t_end=None):
 
         #
-        print ("... Fixing tracks...")
+        #print ("... Fixing tracks...")
 
         #
         if t==None or t_end==None:
@@ -1372,7 +1393,7 @@ class Track():
                 except:
 
                     if self.update_tracks:
-                        print ("UPDATING TRACKS")
+                        #print ("UPDATING TRACKS")
                         self.tracks_chunks = self.tracks_chunks_fixed
                         self.tracks_spine = self.tracks_spine_fixed
 
@@ -1397,7 +1418,7 @@ class Track():
         pbar.close()
 
         if self.update_tracks:
-            print ("UPDATING TRACKS")
+            #print ("UPDATING TRACKS")
             self.tracks_chunks = self.tracks_chunks_fixed
             self.tracks_spine = self.tracks_spine_fixed
 

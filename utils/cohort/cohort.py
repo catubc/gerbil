@@ -106,20 +106,34 @@ class CohortProcessor():
                 fnames_slp.append(fname)
 
         #
-        print ("# of files: ", len(fname))
+        print ("# of huddle day/night huddle files found: ", len(fnames_slp))
         if self.parallel:
             parmap.map(process_huddle_track,
                        fnames_slp,
                        self.fix_track_flag,
                        self.interpolate_flag,
+                       self.max_jump_allowed,
+                       self.max_dist_to_join,
+                       self.min_chunk_len,
+                       self.max_distance_huddle,
+                       self.max_time_to_join_huddle,
+                       self.min_huddle_time,
+                       self.recompute_flag,
                        pm_processes=self.n_cores,
                        pm_pbar = True)
         else:
             for fname_slp in tqdm(fnames_slp):
                 process_huddle_track(fname_slp,
-											self.fix_track_flag,
-											self.interpolate_flag,)
-											
+                                    self.fix_track_flag,
+                                    self.interpolate_flag,
+                                    self.max_jump_allowed,
+                                   self.max_dist_to_join,
+                                   self.min_chunk_len,
+                                   self.max_distance_huddle,
+                                   self.max_time_to_join_huddle,
+                                   self.min_huddle_time,  
+                                   self.recompute_flag,
+                                    )											
 											
 		##################### PROCESS MIXED VIDEOS ###########
         all_fnames = []
@@ -135,19 +149,36 @@ class CohortProcessor():
                                     
                 all_fnames.append(fname_day)
                 all_fnames.append(fname_night)
-                
+
+        print ("# of huddle hybrid huddle files found: ", len(all_fnames))
+
         if self.parallel:
             parmap.map(process_huddle_track,
                        all_fnames,
                        self.fix_track_flag,
                        self.interpolate_flag,
+                       self.max_jump_allowed,
+                       self.max_dist_to_join,
+                       self.min_chunk_len,
+                       self.max_distance_huddle,
+                       self.max_time_to_join_huddle,
+                       self.min_huddle_time,  
+                       self.recompute_flag,
                        pm_processes=self.n_cores,
                        pm_pbar = True)
         else:
             for fname_slp in tqdm(all_fnames):
                 process_huddle_track(fname_slp,
-                                            self.fix_track_flag,
-                                            self.interpolate_flag,)
+                                    self.fix_track_flag,
+                                    self.interpolate_flag,
+                                    self.max_jump_allowed,
+                                   self.max_dist_to_join,
+                                   self.min_chunk_len,
+                                   self.max_distance_huddle,
+                                   self.max_time_to_join_huddle,
+                                   self.min_huddle_time,  
+                                   self.recompute_flag,
+                                    )
         
         ##################################
         ####### MERGE HYBRID VIDS ########      
@@ -203,10 +234,7 @@ class CohortProcessor():
                                     '.mp4','_'+'Both')+"_huddle_spine_fixed_interpolated.npy"
                                     
                 np.save(fname_both, final_track)
-                													
-											
-											
-											
+                																			
 
     #
     def load_huddle_tracks(self):
@@ -222,7 +250,6 @@ class CohortProcessor():
         if self.interpolate_flag:
            text = text + "_interpolated"
 
-
         #
         fnames_slp = []
         self.tracks_huddles = []
@@ -232,19 +259,12 @@ class CohortProcessor():
             #
             if os.path.exists(fname):
                 #
-                #temp = np.load(os.path.join(fname[:-4]+text+".npy"))
                 self.tracks_huddles.append(fname)
             else:
                 print ("Missing: ", fname)
-        #
-
 
         #
-        print (" # of files: ", len(self.tracks_huddles))
-
-
-
-
+        print (" # of files: ", len(self.tracks_huddles), "example: ", self.tracks_huddles[0])
 
 
     #
@@ -320,7 +340,7 @@ class CohortProcessor():
             if os.path.exists(fname):
                 fnames_slp.append(fname)
 
-
+        print ("Found # of Day/night slp files: ", len(fnames_slp))
         #
         if self.parallel:
             parmap.map(process_feature_track,
@@ -347,6 +367,8 @@ class CohortProcessor():
                 all_fnames.append(fname_day)
                 all_fnames.append(fname_night)
         
+        print ("Found # of both slp files: ", len(all_fnames))
+
         if self.parallel:
             parmap.map(process_feature_track,
                        all_fnames,
@@ -355,6 +377,7 @@ class CohortProcessor():
                        pm_pbar = True)
         else:
             for fname_slp in tqdm(all_fnames):
+                #print ("fname : ", fname_slp)
                 process_feature_track(fname_slp, self.exclude_huddles)  
         
         ##################################
@@ -1274,14 +1297,15 @@ def compute_huddle_parallel(tracks_features,
     huddle_comp_binned = np.vstack(res)
     return huddle_comp_binned
 
-
+#
 def process_feature_track(fname_slp, exclude_huddles):
 
     if os.path.exists(fname_slp):
-
+    
         fname_spine_out = fname_slp.replace('.slp',"_spine.npy")
         if os.path.exists(fname_spine_out):
             return
+        #print (fname_spine_out)
 
         t = track.Track(fname_slp)
         t.exclude_huddles = exclude_huddles
@@ -1308,7 +1332,15 @@ def process_feature_track(fname_slp, exclude_huddles):
 #
 def process_huddle_track(fname_slp,
 						 fix_track_flag,
-						 interpolate_flag):
+                         interpolate_flag,
+                         max_jump_allowed = 50,
+                         max_dist_to_join = 50,
+                         min_chunk_len = 25,
+                         max_distance_huddle = 100,
+                         max_time_to_join_huddle = 120*24,
+                         min_huddle_time = 120*24,
+                         recompute_flag = False,
+                         ):
 
 	text = '_spine'
 	if fix_track_flag:
@@ -1320,7 +1352,7 @@ def process_huddle_track(fname_slp,
 	fname_out = os.path.join(fname_slp[:-4]+text+".npy")
 
 	#
-	if os.path.exists(fname_out):
+	if os.path.exists(fname_out) and recompute_flag==False:
 		return
 
 	#
@@ -1331,9 +1363,9 @@ def process_huddle_track(fname_slp,
 	#############################################
 	############# RUN TRACK FIXER ###############
 	#############################################
-	max_jump_allowed = 50,              # maximum distance that a gerbil can travel in 1 frame
-	max_dist_to_join = 50,              # maximum distnace between 2 chunks that can safely be merged
-	min_chunk_len = 25                  # shortest duration of
+	#max_jump_allowed = 50,              # maximum distance that a gerbil can travel in 1 frame
+	#max_dist_to_join = 50,              # maximum distnace between 2 chunks that can safely be merged
+	#min_chunk_len = 25                  # shortest duration of
 
 	t.fix_huddles(max_jump_allowed,
 					  max_dist_to_join,
@@ -1345,9 +1377,9 @@ def process_huddle_track(fname_slp,
 
 	#
 	fps = 24
-	t.max_distance_huddle = 100                   # how far away we can merge huddles together (pixels)
-	t.max_time_to_join_huddle = fps*120            # how far in time can we merge huddle chunks (seconds x frames)
-	t.min_huddle_time = 120*fps                     # minimum huddle duration in seconds
+	t.max_distance_huddle = max_distance_huddle                   # how far away we can merge huddles together (pixels)
+	t.max_time_to_join_huddle = max_time_to_join_huddle            # how far in time can we merge huddle chunks (seconds x frames)
+	t.min_huddle_time = min_huddle_time                     # minimum huddle duration in seconds
 	t.memory_interpolate_huddle()
 
 	##################################################
@@ -1380,33 +1412,19 @@ def remove_huddles(fnames,
             
             if np.isnan(h_loc[0]):
                 continue
-            #print (h_loc)
-
+            
+            #
             f_loc = features[k]
-            #print ("h_loc: ", h_loc.shape, "  f_loc: ", f_loc.shape)
 
+            #
             dists = np.linalg.norm(f_loc-h_loc,axis=1)
-            #print ("dists: ", dists)
 
             # set
             idx = np.where(dists<=huddle_min_distance)
-            #print ("idx: ", idx)
-            features[k,idx]=np.nan
 
+            #
+            features[k,idx]=np.nan
+    
+    # basically both videos straddling the light change should get the same output then...
     fname_out = fname_features.replace('.npy','_nohuddle.npy')
     np.save(fname_out, features)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
