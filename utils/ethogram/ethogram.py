@@ -1340,11 +1340,11 @@ def plot_ethogram_hourly(
 
     n_partitions=24
 
-    fname_out = os.path.join(cohort.root_dir,
+    fname_in = os.path.join(cohort.root_dir,
                              behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
                              +str(exclude_huddles)+ '.npy')
 
-    img = np.load(fname_out)
+    img = np.load(fname_in)
     start_day = 15
     end_day = 30
 

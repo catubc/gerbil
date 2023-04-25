@@ -271,7 +271,7 @@ class CohortProcessor():
     def compute_huddle_composition(self):
 
         #
-        if True:
+        if self.parallel_flag:
             self.huddle_comps_binned = parmap.map(compute_huddle_parallel,
 											   self.tracks_features_fnames,
 											   #self.tracks_features[:50],
@@ -282,10 +282,11 @@ class CohortProcessor():
 											   )
         else:
             self.huddle_comps_binned = []
-            for s in trange(len(self.tracks_features)):
-                session = self.tracks_features[s]
+            for s in trange(len(self.tracks_features_fnames)):
+                session = self.tracks_features_fnames[s]
 
-                huddle_comp_binned = compute_huddle_parallel(session,
+                huddle_comp_binned = compute_huddle_parallel(
+                                                        session,
                                                         self.median_filter_width,
                                                         self.n_frames_per_bin,
                                                         )
@@ -308,15 +309,16 @@ class CohortProcessor():
         for k in range(self.fnames_slp.shape[0]):
             fname = os.path.join(self.root_dir_features,self.fnames_slp[k][0]).replace(
                                     '.mp4','_'+self.NN_type[k][0])+".slp"
-            try:
-                #if os.path.exists(fname):
-                #
-                if self.use_nohuddle:
-                    self.fname_spine_saved = fname[:-4]+"_spine_nohuddle.npy"
-                else:
-                    self.fname_spine_saved = fname[:-4]+"_spine.npy"
+            if self.use_nohuddle:
+                self.fname_spine_saved = fname[:-4]+"_spine_nohuddle.npy"
+            else:
+                self.fname_spine_saved = fname[:-4]+"_spine.npy"
 
-                #
+            if os.path.exists(self.fname_spine_saved)==False:
+                continue
+
+            #
+            try:
                 self.tracks_features_fnames.append(self.fname_spine_saved)
                 self.tracks_features.append(np.load(self.fname_spine_saved))
                 self.tracks_features_pdays.append(self.PDays[k])
@@ -1227,6 +1229,8 @@ class CohortProcessor():
             #print (ctr, int(ctr*6), int((ctr+1)*6), k, k+img_width)
             img[:,int(ctr*6):int((ctr+1)*6)] = temp
             ctr+=1
+
+        #
         self.huddle_ethogram = np.array(img)
         #print ("img.sha: ", img.shape)
 
