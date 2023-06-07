@@ -40,6 +40,9 @@ class CohortProcessor():
         self.root_dir = os.path.split(self.fname_spreadsheet)[0]
 
         #self.list_methods()
+        
+        #
+        self.fps = 24
 
     #
     def remove_huddles_from_feature_tracks(self):
@@ -87,6 +90,22 @@ class CohortProcessor():
                     self.huddle_min_distance)
 
     #
+    def cleanup_blocks(self):
+
+        #
+        for k in trange(self.fnames_slp.shape[0]):
+            f = os.path.join(self.root_dir, 
+                             'blocks',
+                             self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0]+".npy")
+            #print ("f: ", f)
+            try:
+                ff = glob.glob(f)[0]
+                d = np.load(ff)
+            except:
+                print ("missing : ", f)
+                continue
+
+            cleanup_block_tracks(d, ff)
 
 
     #
@@ -236,6 +255,125 @@ class CohortProcessor():
                 np.save(fname_both, final_track)
                 																			
 
+                    
+    def convert_block_slp_to_npy(self):
+        
+        #
+        print ("... parallel converting .slp -> .npy...")
+        import parmap
+        parmap.map(convert_blocks_parallel,
+                   self.tracks_blocks,
+                   self.root_dir,
+                   pm_processes=16,
+                   pm_pbar=True)
+    
+    def merge_block_tracks_both(self):
+        
+        for k in range(self.NN_type.shape[0]):
+
+            if self.NN_type[k][0]=='Both':
+                fname_day = os.path.join(self.root_dir, 'blocks',
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_Day.npy')
+                fname_night = os.path.join(self.root_dir,'blocks',
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_Night.npy')
+                light_switch = self.light_switch[k].replace(' ', '').split(',')
+                time = light_switch[0]
+                idx = time.index(":")
+                time_in_frames = int(time[:idx])*60*self.fps + int(time[idx+1:])*self.fps
+
+                #
+                order = [light_switch[1], light_switch[2]]
+  
+                print ("light_switch time: ", time, time_in_frames, order)
+
+                # process day
+                try:
+                    #fname_slp = fname_day
+                    track_day = np.load(fname_day)
+                except:
+                    print ("Missing: ", fname_day)
+                    continue
+                    
+                try:
+                    # process night 
+                    track_night = np.load(fname_night)
+                except:
+                    print ("Missing: ", fname_night)
+                    continue
+  
+                final_track = np.zeros(track_day.shape)+np.nan
+                max_huddles = min(track_day.shape[1], track_night.shape[1])
+                if order[0]=='day':
+                    # merge order day -> night
+                    final_track[:time_in_frames,:max_huddles] = track_day[:time_in_frames,:max_huddles]
+                    final_track[time_in_frames:,:max_huddles] = track_night[time_in_frames:,:max_huddles]
+
+                else:
+                    # merge order night -> day
+                    final_track[:time_in_frames,:max_huddles] = track_night[:time_in_frames,:max_huddles]
+                    final_track[time_in_frames:,:max_huddles] = track_day[time_in_frames:,:max_huddles]            
+                #
+                fname_both = os.path.join(self.root_dir_huddles,
+                                     self.fnames_slp[k][0]).replace(
+                                    '.mp4','_'+'Both.npy')
+                                    
+                np.save(fname_both, final_track)
+    
+    
+    #
+    def load_block_tracks_clean(self):
+        
+        #
+        self.root_dir_blocks = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+                                              'blocks')
+
+        # add the name extensions to the file names
+        text = ''
+
+        #
+        fnames_slp = []
+        self.tracks_blocks = []
+        missing=0
+        for k in range(self.fnames_slp.shape[0]):
+            fname = os.path.join(self.root_dir_blocks,
+							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+"_cleanedup.npy"
+            
+            self.tracks_blocks.append(fname)
+            #
+            if os.path.exists(fname)==False:
+                missing+=1
+
+        #
+        print (" # of block files: ", len(self.tracks_blocks), ", missing: ", missing)
+                    
+    #
+    def load_block_tracks_names(self):
+        
+        #
+        self.root_dir_blocks = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+                                              'blocks')
+
+        # add the name extensions to the file names
+        text = ''
+
+        #
+        fnames_slp = []
+        self.tracks_blocks = []
+        for k in range(self.fnames_slp.shape[0]):
+            fname = os.path.join(self.root_dir_blocks,
+							     self.fnames_slp[k][0]).replace('.mp4','_'+self.NN_type[k][0])+".slp"
+            #
+            #if os.path.exists(fname):
+                #
+            self.tracks_blocks.append(fname)
+            #else:
+            #    print ("Missing: ", fname)
+
+        #
+        print (" # of files: ", len(self.tracks_blocks)) #, "example: ", self.tracks_blocks[0])
+                    
     #
     def load_huddle_tracks(self):
 
@@ -267,6 +405,41 @@ class CohortProcessor():
         print (" # of files: ", len(self.tracks_huddles), "example: ", self.tracks_huddles[0])
 
 
+            #
+    def compute_huddle_proximity(self):
+
+        #
+        if self.parallel_flag:
+            idxs = np.arange(len(self.tracks_features_fnames))
+            self.block_proximity_binned = parmap.map(compute_block_proximity_parallel,
+                                                     idxs,
+                                                     self.tracks_features_fnames,
+                                                     self.tracks_blocks,
+                                                     self.median_filter_width,
+                                                     self.n_frames_per_bin,
+                                                     self.threshold_dist,
+                                                     pm_processes = self.n_cores,
+                                                     pm_pbar = True
+                                                    )
+        else:
+            self.block_proximity_binned = []
+            idxs = np.arange(len(self.tracks_features_fnames))
+
+            for idx in tqdm(idxs):
+                
+                block_promxity = compute_block_proximity_parallel(
+                                                        idx,
+                                                        self.tracks_features_fnames,
+                                                        self.tracks_blocks,
+                                                        self.median_filter_width,
+                                                        self.n_frames_per_bin,
+                                                        self.threshold_dist
+                                                        )
+
+                self.block_proximity_binned.append(block_promxity)
+                
+        
+        
     #
     def compute_huddle_composition(self):
 
@@ -306,6 +479,7 @@ class CohortProcessor():
         self.tracks_features_start_times_absolute_mins = []
         self.tracks_features_start_times_absolute_sec = []
         self.tracks_features_fnames = []
+        missing =0
         for k in range(self.fnames_slp.shape[0]):
             fname = os.path.join(self.root_dir_features,self.fnames_slp[k][0]).replace(
                                     '.mp4','_'+self.NN_type[k][0])+".slp"
@@ -325,9 +499,10 @@ class CohortProcessor():
                 self.tracks_features_start_times_absolute_mins.append(self.start_times_absolute_minute[k])
                 self.tracks_features_start_times_absolute_sec.append(self.start_times_absolute_sec[k])
             except:
-                print ("missing fname: ", fname)
+                #print ("missing fname: ", fname)
+                missing+=1
         #
-        print ("# of feature tracks: ", len(self.tracks_features))
+        print ("# of feature tracks: ", len(self.tracks_features), ", missing: ", missing)
 
     #
     def preprocess_feature_tracks(self):
@@ -602,24 +777,28 @@ class CohortProcessor():
         self.start_times_absolute_sec = []
         for k in range(len(self.start_times_military)):
             time = self.start_times_military[k]
-            #time = [time.hour, time.minute, time.second]
+            try: 
+                time_hour, time_minute, time_second = time.hour, time.minute, time.second
+            except:
+                time_hour, time_minute, time_second = np.int32(time.split(":"))
+            #print ("time: ", time)
             pday = int(self.PDays[k][1:])
 
             # get minutes
             pday_abs = pday - 15
             
             # get time in mins
-            time_in_mins = time.hour*60 + time.minute
+            time_in_mins = time_hour*60 + time_minute
             abs_time_in_mins = pday_abs*24*60 + time_in_mins  # convert from day to minute;
             self.start_times_absolute_minute.append(abs_time_in_mins)
             
             # get time in sec
-            time_in_sec = time.hour*60*60 + time.minute*60
+            time_in_sec = time_hour*60*60 + time_minute*60
             abs_time_in_sec = pday_abs*24*60*60 + time_in_sec  # convert from day to minute;
             self.start_times_absolute_sec.append(abs_time_in_sec)
             
             #
-            time_in_frames= time.hour*60*60*fps+time.minute*60*fps +time.second*fps
+            time_in_frames= time_hour*60*60*fps+time_minute*60*fps +time_second*fps
             self.start_times_absolute_frame.append(time_in_frames)
 
     #
@@ -632,6 +811,29 @@ class CohortProcessor():
                *method_list,
                sep='\n  ')
 
+        
+    def compute_rectangle_occupancy_second(self,
+                                          track_local,
+                                          lower_left,
+                                          upper_right): 
+            
+        # check locations where there are no detected animals
+        idx = np.where(np.isnan(track_local.sum(1))==True)[0]
+
+        # zero out non-detected parts; or set the values very far off the box so they can't be detected by circle/rectangle
+        track_local[idx] = -10000
+
+        #
+        idx2 = np.where(np.all(np.logical_and(track_local>=lower_left,
+                                     track_local <= upper_right), axis=1))[0]
+        #print (track_local2.shape, idx2.shape)
+
+        # make empty array
+        locs = np.zeros(track_local.shape[0])
+        locs[idx2]=1
+
+        # returning a boolean array with detected rectangle entries set to 1
+        return locs
 
     #
     def compute_rectangle_occupancy(self,
@@ -639,6 +841,8 @@ class CohortProcessor():
                                  lower_left,
                                  upper_right):
         #
+        
+        
         idx = np.where(np.isnan(track_local.sum(1))==False)[0]
         track_local2 = track_local[idx]
         idx2 = np.where(np.all(np.logical_and(track_local2>=lower_left,
@@ -648,6 +852,45 @@ class CohortProcessor():
         return idx2.shape[0]/track_local.shape[0]*100
 
     #
+    def get_rectangle_occupancy_second(self, a1):
+
+        #
+        res=[]
+        lower_left = self.rect_coords[0]
+        upper_right = self.rect_coords[1]
+
+        #
+        for k in trange(0,1500,1, desc='checking up to 1500 .slp files'):
+            self.track_id = k
+            track = self.load_single_feature_spines()
+            # if track is missing, skip it
+            if track is None:
+                res.append(np.zeros(ave_track_len))  # this uses the previous track length to fill in zeros; may crash if the very first file is missing...
+                continue
+
+            #
+            try:
+                #print (track.tracks_spine.shape)
+                temp = self.compute_rectangle_occupancy_second(track.tracks_spine[:,a1],
+                                                        lower_left,
+                                                        upper_right)
+
+                res.append(temp)
+            except:
+                print("anima;", a1, "error loading track: ", k)
+                res.append(np.zeros(ave_track_len))  # same issue as above possily
+            
+            # 
+            ave_track_len = track.tracks_spine.shape[0]
+            
+        res = np.array(res)
+        print ("res: ", res.shape)
+
+        self.res = res
+
+
+    
+    #
     def get_rectangle_occupancy(self, a1):
 
         #
@@ -656,7 +899,7 @@ class CohortProcessor():
         upper_right = self.rect_coords[1]
 
         #
-        for k in trange(0,1500,1):
+        for k in trange(0,1500,1, desc='checking up to 1500 .slp files'):
             self.track_id = k
             track = self.load_single_feature_spines()
             # if track is missing, skip it
@@ -669,7 +912,7 @@ class CohortProcessor():
                 #print (track.tracks_spine.shape)
                 temp = self.compute_rectangle_occupancy(track.tracks_spine[:,a1],
                                                         lower_left,
-                                                    upper_right)
+                                                        upper_right)
 
                 res.append(temp)
             except:
@@ -916,6 +1159,7 @@ class CohortProcessor():
 
         #
         t.exclude_huddles = self.exclude_huddles
+        t.track_type = 'feature'
         t.get_track_spine_centers()
 
         return t
@@ -1159,16 +1403,28 @@ class CohortProcessor():
         plt.title("Full Huddle Ethogram")
         plt.show()
 
-
-    def show_huddle_composition_ethogram_all_animals(self):
+    def show_rectangle_composition_ethogram_all_animals(self):
         
- #
+ #      
+        custom_cmap = (matplotlib.colors.ListedColormap(['#d3d3d300', '#cb3311', '#4477aa', '#ccbb44', '#228833', '#ee7733', '#66ccee'])
+        .with_extremes(over='0.25', under='0.75'))
+        custom_cmap = (matplotlib.colors.ListedColormap(['#d3d3d300', '#9d280d', '#355d83', '#9e9135', '#1a6928', '#b85d28', '#4f9eb8'])
+        .with_extremes(over='0.25', under='0.75'))
+        custom_cmap = (matplotlib.colors.ListedColormap(['#d3d3d300', '#701c09', '#26425e', '#716726', '#134b1c', '#84421c', '#397184'])
+        .with_extremes(over='0.25', under='0.75'))
+        custom_cmap = (matplotlib.colors.ListedColormap(['#d3d3d3', '#cb3311', '#4477aa', '#ccbb44', '#228833', '#ee7733', '#66ccee'])
+        .with_extremes(over='0.25', under='0.75'))
+    
+    
+    
+         #
         plt.figure(figsize=(10,5))
-        plt.imshow(self.huddle_ethogram.T[::-1],
+        plt.imshow(self.rectangle_ethogram,
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
-                  cmap="Accent_r"
+                  cmap=custom_cmap
+                #cmap = 'jet'
                   )
 
         #
@@ -1176,8 +1432,181 @@ class CohortProcessor():
         #yticks_new = yticks//6 + 15
         plt.ylabel("PDay")
         plt.xlabel("Time (hr)")
-        plt.show()
+        #plt.show()
+        plt.savefig('/home/cat/Downloads/rectangle_ethogram.png', transparent = True)
 
+        
+    def show_block_proxmity_ethogram(self):
+        
+ #      
+        custom_cmap = (matplotlib.colors.ListedColormap(['#ffffff', '#cb3311', '#4477aa', '#ccbb44', '#228833', '#ee7733', '#66ccee'])
+        .with_extremes(over='0.25', under='0.75'))
+       # custom_cmap = (matplotlib.colors.ListedColormap(['#ffffff', '#2d0b04', '#0f1a26', '#2d290f', '#081e0b', '#351a0b', '#172d35'])
+       # .with_extremes(over='0.25', under='0.75'))
+       # custom_cmap = (matplotlib.colors.ListedColormap(['#ffffff', '#c5e892', '#afce82', '#99b472', '#839b61', '#6d8151', '#586741'])
+        #.with_extremes(over='0.25', under='0.75'))
+ 
+        plt.figure(figsize=(10,5))
+        img = self.block_ethogram.T[::-1].copy()
+        #idx = np.where(img==0)
+        #img[idx]= np.nan
+        plt.imshow(img,
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap=custom_cmap
+                  )
+
+        #
+        #yticks = np.arange(0,96,6)
+        #yticks_new = yticks//6 + 15
+        plt.ylabel("PDay")
+        plt.xlabel("Time (hr)")
+        #plt.show()
+        plt.savefig('/home/cat/Downloads/ethogram.png', transparent = False)
+        
+    def show_huddle_composition_ethogram_all_animals(self):
+        
+ #      
+        custom_cmap = (matplotlib.colors.ListedColormap(['#ffffff', '#cb3311', '#4477aa', '#ccbb44', '#228833', '#ee7733', '#66ccee'])
+        .with_extremes(over='0.25', under='0.75'))
+       # custom_cmap = (matplotlib.colors.ListedColormap(['#ffffff', '#2d0b04', '#0f1a26', '#2d290f', '#081e0b', '#351a0b', '#172d35'])
+       # .with_extremes(over='0.25', under='0.75'))
+       # custom_cmap = (matplotlib.colors.ListedColormap(['#ffffff', '#c5e892', '#afce82', '#99b472', '#839b61', '#6d8151', '#586741'])
+        #.with_extremes(over='0.25', under='0.75'))
+ 
+        plt.figure(figsize=(10,5))
+        plt.imshow(self.huddle_ethogram.T[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap=custom_cmap
+                  )
+
+        #
+        #yticks = np.arange(0,96,6)
+        #yticks_new = yticks//6 + 15
+        plt.ylabel("PDay")
+        plt.xlabel("Time (hr)")
+        #plt.show()
+        plt.savefig('/home/cat/Downloads/ethogram.png', transparent = False)
+        
+    #
+    def show_combined_ethogram(self):
+        
+ #      
+        plt.figure(figsize=(10,5))
+        
+        huddle_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#c0bcb5'])
+        .with_extremes(over='0.25', under='0.75'))
+        
+        plt.imshow(self.huddle_ethogram.T[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap=huddle_cmap
+                  )
+        
+        hopper_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#e66912'])
+        .with_extremes(over='0.25', under='0.75'))
+        
+        food_hopper = np.load('/home/cat/Downloads/rois/food_hopper.npy')         
+        plt.imshow(food_hopper.T[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap=hopper_cmap
+                  )
+        
+        water_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#fbce3a'])
+        .with_extremes(over='0.25', under='0.75'))
+         
+        waterspout = np.load('/home/cat/Downloads/rois/waterspout.npy')         
+        plt.imshow(waterspout.T[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap=water_cmap
+                  )
+        
+        house_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#016367'])
+        .with_extremes(over='0.25', under='0.75'))
+         
+        house = np.load('/home/cat/Downloads/rois/house.npy')         
+        plt.imshow(house.T[::-1],
+                  aspect='auto',
+                  interpolation = "None",
+                  extent= [0,24,14.5,30.5],
+                  cmap=house_cmap
+                  )
+                            
+        #
+        #yticks = np.arange(0,96,6)
+        #yticks_new = yticks//6 + 15
+        plt.ylabel("PDay")
+        plt.xlabel("Time (hr)")
+        #plt.show()
+        plt.savefig('/home/cat/Downloads/combined_ethogram.png', transparent = True)
+
+        
+             
+    #
+    def generate_block_proximity_ethogram(self):
+	    
+        #fps = 24
+        # img width in binned values  hrs x mins x sec x fps
+        img_width = int(24*60*60*self.video_frame_rate/self.n_frames_per_bin)
+        img = np.zeros((img_width,16*6))
+        img_flattened = np.zeros((img_width*16,6))
+        print ("size of img: ", img.shape, " size of flatten image: ", img_flattened.shape)
+
+
+        #
+        # loop over every recording
+        for ctr,start in enumerate(tqdm(self.tracks_features_start_times_absolute_sec)):
+            
+            #
+            start_frames = start*self.video_frame_rate//self.n_frames_per_bin
+            #start_row = start_frames//(img_width)#+15
+            #start_row_flatten = start_frames #//(img_width)#+15
+            #start_col = start_frames%(img_width)
+            start_col_flatten = start_frames #%(img_width)
+            #print (self.fnames_slp[ctr], "start frames: ", start_frames, "start row: ", start_row, " start _col: ", start_col)
+
+            # loop over animals
+            #print ("start-col: ", start_col_flatten)
+            for k in range(len(self.block_proximity_binned[0])):
+                start_row_flatten = k
+                #if k>2:
+                #    break
+                try:
+                    temp = self.block_proximity_binned[ctr][k].squeeze()
+                except:
+                    continue
+                idx = np.where(temp==1)[0]
+                temp[idx] = k+1
+                len_ = temp.shape[0]
+                #print ("len: ", len_)
+                #img[start_col:start_col+len_,start_row*6+k] = temp[:len_]
+                img_flattened[start_col_flatten:start_col_flatten+len_,start_row_flatten] = temp[:len_]
+                
+                # pad the next 10% of the data with the last 10% of the data
+                if True:
+                    pad_len = int(temp.shape[0]*self.forward_padding/100)
+                    temp = np.hstack((temp,temp,temp,temp,temp,temp,temp,temp))
+                    img_flattened[start_col_flatten+len_:start_col_flatten+ len_+pad_len, start_row_flatten] = temp[:pad_len]
+        # remake non-flattened images
+        ctr=0
+        for k in range(0, img_flattened.shape[0], img_width):
+            temp = img_flattened[k:k+img_width]
+            #print (ctr, int(ctr*6), int((ctr+1)*6), k, k+img_width)
+            img[:,int(ctr*6):int((ctr+1)*6)] = temp
+            ctr+=1
+
+        #
+        self.block_ethogram = np.array(img)
+        
+    #
     def generate_huddle_composition_ethograms(self):
 	    
         #fps = 24
@@ -1233,8 +1662,108 @@ class CohortProcessor():
         #
         self.huddle_ethogram = np.array(img)
         #print ("img.sha: ", img.shape)
+        
+    def generate_huddle_composition_ethograms2(self):
+	    # not sure if this is the corret one !?
+        img_width = int(24 * 60 * 60 * self.video_frame_rate / self.n_frames_per_bin)
+        img = np.zeros((img_width, 16 * (6 + 1))) + np.nan
+        img_flattened = np.zeros((img_width * 16, 6)) + np.nan
+        print("size of img: ", img.shape, " size of flatten image: ", img_flattened.shape)
 
-       
+        for ctr, start in enumerate(tqdm(self.tracks_features_start_times_absolute_sec)):
+            start_frames = start * self.video_frame_rate // self.n_frames_per_bin
+            start_col_flatten = start_frames
+
+            for k in range(len(self.huddle_comps_binned[0])):
+                start_row_flatten = k
+                try:
+                    temp = self.huddle_comps_binned[ctr][k].squeeze()
+                except:
+                    continue
+                idx = np.where(temp == 1)[0]
+                temp[idx] = k + 1
+                len_ = temp.shape[0]
+                img_flattened[start_col_flatten:start_col_flatten + len_, start_row_flatten] = temp[:len_]
+
+                if True:
+                    pad_len = int(temp.shape[0] * self.forward_padding / 100)
+                    temp = np.hstack((temp, temp, temp, temp, temp, temp, temp, temp))
+                    img_flattened[start_col_flatten + len_:start_col_flatten + len_ + pad_len, start_row_flatten] = temp[:pad_len]
+
+        img = np.zeros((img_width, 16 * (6 + 1))) + np.nan
+        ctr = 0
+        for k in range(0, img_flattened.shape[0], img_width):
+            temp = img_flattened[k:k + img_width]
+            img[:, int(ctr * 6) + ctr:int((ctr + 1) * 6) + ctr] = temp
+            ctr += 1
+
+        self.huddle_ethogram = np.array(img)
+        # print ("img.sha: ", img.shape)
+
+
+ #
+    def generate_rectangle_composition_ethograms(self):
+	    
+        #fps = 24
+        img_width = int(24*60*60*self.video_frame_rate/self.n_frames_per_bin)
+        img_flattened = np.zeros((img_width*16,6))+np.nan
+        #print ("size of img: ", img.shape, " size of flatten image: ", img_flattened.shape)
+
+        #
+        # loop over every recording
+        for ctr,start in enumerate(tqdm(self.tracks_features_start_times_absolute_sec)):
+            
+            #
+            start_frames = start*self.video_frame_rate//self.n_frames_per_bin
+            #start_row = start_frames//(img_width)#+15
+            #start_row_flatten = start_frames #//(img_width)#+15
+            #start_col = start_frames%(img_width)
+            start_col_flatten = start_frames #%(img_width)
+            #print (self.fnames_slp[ctr], "start frames: ", start_frames, "start row: ", start_row, " start _col: ", start_col)
+
+            # loop over animals
+            #print ("start-col: ", start_col_flatten)
+            for k in range(len(self.rectangle_comps_binned[0])):
+                start_row_flatten = k
+                #if k>2:
+                #    break
+                try:
+                    temp = self.rectangle_comps_binned[ctr][k].squeeze()
+                except:
+                    continue
+                idx = np.where(temp==1)[0]
+                temp[idx] = k+1
+                len_ = temp.shape[0]
+                #print ("len: ", len_)
+                #img[start_col:start_col+len_,start_row*6+k] = temp[:len_]
+                img_flattened[start_col_flatten:start_col_flatten+len_,start_row_flatten] = temp[:len_]
+                
+                # pad the next 10% of the data with the last 10% of the data
+                if True:
+                    pad_len = int(temp.shape[0]*self.forward_padding/100)
+                    temp = np.hstack((temp,temp,temp,temp,temp,temp,temp,temp))
+                    img_flattened[start_col_flatten+len_:start_col_flatten+ len_+pad_len, start_row_flatten] = temp[:pad_len]
+                    
+            #
+            
+            
+        # remake non-flattened images
+        # img width in binned values  hrs x mins x sec x fps
+        img = np.zeros((img_width,16*(6+1)))+np.nan
+        ctr=0
+        for k in range(0, img_flattened.shape[0], img_width):
+            temp = img_flattened[k:k+img_width]
+            #print (ctr, int(ctr*6), int((ctr+1)*6), k, k+img_width)
+            img[:,int(ctr*6)+ctr:int((ctr+1)*6)+ctr] = temp
+            
+            
+            
+            ctr+=1
+
+        #
+        self.rectangle_ethogram = np.array(img).T[::-1]
+        np.save('/home/cat/Downloads/rois/rectangle_ethogram.npy', self.rectangle_ethogram)
+        #print ("img.sha: ", img.shape)
 
     #
     def compute_pairwise_interactions(self,track):
@@ -1351,7 +1880,191 @@ class CohortProcessor():
 
         return dur_matrix_percentage
 
+    #
+    def compute_rectangle_composition(self):
+        
+        #
+        if self.parallel_flag:
+            self.rectangle_comps_binned = parmap.map(compute_rectangle_parallel,                                                                                                  self.tracks_features_fnames,
+                                               self.median_filter_width,
+                                               self.n_frames_per_bin,
+                                               self.rect_coords,
+                                               pm_processes = self.n_cores,
+                                               pm_pbar = True
+                                               )
+        else:
+            self.rectangle_comps_binned = []
+            for s in trange(len(self.tracks_features_fnames)):
+                session = self.tracks_features_fnames[s]
+
+                rectangle_comp_binned = compute_rectangle_parallel(
+                                                        session,
+                                                        self.median_filter_width,
+                                                        self.n_frames_per_bin,
+                                                        self.rect_coords,
+                                                        )
+
+                self.rectangle_comps_binned.append(rectangle_comp_binned)
+
+        
+    
+    
+def compute_rectangle_occupancy_second2(track_local,
+                                  lower_left,
+                                  upper_right): 
+
+    # check locations where there are no detected animals
+    idx = np.where(np.isnan(track_local.sum(1))==True)[0]
+
+    # zero out non-detected parts; or set the values very far off the box so they can't be detected by circle/rectangle
+    track_local[idx] = -10000
+
+    #
+    idx2 = np.where(np.all(np.logical_and(track_local>=lower_left,
+                                 track_local <= upper_right), axis=1))[0]
+    #print (track_local2.shape, idx2.shape)
+
+    # make empty array
+    locs = np.zeros(track_local.shape[0])
+    locs[idx2]=1
+
+    # returning a boolean array with detected rectangle entries set to 1
+    return locs
+
 #
+def compute_rectangle_parallel(tracks_features_fname,
+                               median_filter_width,
+                               n_frames_per_bin,
+                               rect_coords):
+    
+    #
+    tracks_features = np.load(tracks_features_fname)
+
+    # # time points , # of animals
+    rectangle_comp = np.zeros((tracks_features.shape[0], tracks_features.shape[1]))
+    
+    # 
+    for a in range(rectangle_comp.shape[1]):
+        res = compute_rectangle_occupancy_second2(
+                                                    tracks_features[:,a],
+                                                    rect_coords[0],
+                                                    rect_coords[1])
+        
+        rectangle_comp[:,a] = res
+    
+    # convert locations to 1s where the animal is in the box
+    #idx = np.where(np.isnan(tracks_features[:,:,0]))  # set all nans to potential values in the huddles
+    #huddle_comp[idx] = 1  # if we can't find the track, animals probably in the huddle
+
+    
+    
+    #
+    res = []
+    for k in range(rectangle_comp.shape[1]):
+
+        #
+        temp1 = scipy.signal.medfilt(rectangle_comp[:,k], kernel_size=median_filter_width)
+        rectangle_comp[:,k] = temp1
+
+        # split the data in # bins as per the variable
+        idxs = np.arange(0,temp1.shape[0],n_frames_per_bin)[1:]
+        temp2 = np.array(np.array_split(temp1, idxs))
+
+        # find the mode (most common element) in each 1min bin
+        temp3 = []
+        for t_ in temp2:
+            temp3.append(scipy.stats.mode(t_)[0])
+        res.append(np.hstack(temp3))
+
+    #
+    rectangle_comp_binned = np.vstack(res)
+    
+    fname_out = tracks_features_fname[:-4]+"_rectangle_ethogram.npy"
+    
+    np.save(fname_out, rectangle_comp_binned)
+    
+    
+    return rectangle_comp_binned
+
+
+
+def compute_block_proximity_parallel(file_idx,
+                                     tracks_features_fnames,
+                                     blocks_fnames,
+                                     median_filter_width,
+                                     n_frames_per_bin,
+                                     threshold_dist):
+   
+    fname_out = blocks_fnames[file_idx][:-4]+"_block_ethogram.npy"
+
+    if os.path.exists(fname_out) and False:
+        block_binned = np.load(fname_out)
+        return block_binned
+
+    #
+    try:
+        tracks_features = np.load(tracks_features_fnames[file_idx])
+        blocks_features = np.load(blocks_fnames[file_idx])
+    except:
+        print ("Missing file... making empty: ", os.path.split(blocks_fnames[file_idx])[1])
+        #return blocks_proximity
+        tracks_features = np.zeros((28802, 2, 2))+np.nan
+        blocks_features = np.zeros((28802, 2, 2))+np.nan
+    
+    
+    # time points , # of animals
+    blocks_proximity = np.zeros((tracks_features.shape[0], tracks_features.shape[1]))
+
+    #print ("tracks feeatures: ", tracks_features.shape)
+    #print ("blocks features: ", blocks_features.shape)
+    #
+    res = []
+    for k in range(tracks_features.shape[1]):
+        track = tracks_features[:,k]
+        
+        # lengths
+        diffs1 = track - blocks_features[:,0]
+        dists1 = np.linalg.norm(diffs1,axis=1)
+        #print ("dists1: ", dists1.shape)
+        
+        diffs2 = track - blocks_features[:,1]
+        dists2 = np.linalg.norm(diffs2, axis=1)
+        
+        dists3 = np.vstack((dists1, dists2))
+        #print ("dists3: ", dists3.shape)
+        dists3 = np.nanmin(dists3,axis=0)
+        #print ("dists3: ", dists3.shape)
+        
+        
+        # check locations < min distance threshold
+        idx = np.where(dists3<threshold_dist)[0]
+        
+        #
+        blocks_proximity[idx,k]=1
+    
+        # filter data using some fileter
+        temp1 = scipy.signal.medfilt(blocks_proximity[:,k], 
+                                     kernel_size=median_filter_width)
+        blocks_proximity[:,k] = temp1
+
+        # split the data in # bins as per the variable
+        idxs = np.arange(0,temp1.shape[0],n_frames_per_bin)[1:]
+        temp2 = np.array(np.array_split(temp1, idxs))
+
+        # find the mode (most common element) in each 1min bin
+        temp3 = []
+        for t_ in temp2:
+            temp3.append(scipy.stats.mode(t_)[0])
+        res.append(np.hstack(temp3))
+
+    #
+    block_binned = np.vstack(res)
+        
+    np.save(fname_out, block_binned)
+    
+    
+    return block_binned
+
 
 def compute_huddle_parallel(tracks_features_fname,
                             median_filter_width,
@@ -1495,8 +2208,11 @@ def remove_huddles(fnames,
     fname_features, fname_huddles = fnames[0], fnames[1]
 
     #
-    huddles = np.load(fname_huddles)
-    features = np.load(fname_features)
+    try:
+        huddles = np.load(fname_huddles)
+        features = np.load(fname_features)
+    except:
+        print('missing:', fname_huddles, fname_features)
 
     #
     for k in range(huddles.shape[0]):
@@ -1523,3 +2239,131 @@ def remove_huddles(fnames,
     # basically both videos straddling the light change should get the same output then...
     fname_out = fname_features.replace('.npy','_nohuddle.npy')
     np.save(fname_out, features)
+
+    
+def extract_bouts_of_sequential_integers(arr):
+    # Find the indices where the array changes value
+    indices = np.where(np.diff(arr) != 1)[0] + 1
+    
+    # Split the array into subarrays based on the indices
+    subarrays = np.split(arr, indices)
+    
+    # Filter out the subarrays that have a length of 1 or less
+    bouts = [subarray for subarray in subarrays if len(subarray) > 1]
+    
+    return np.array(bouts).squeeze(), len(bouts)
+
+#
+def cleanup_block_tracks(d, ff):
+
+    #
+    fname_out = ff.replace('.npy','_cleanedup.npy')
+    
+    if os.path.exists(fname_out):
+        return
+    
+    #
+    final_track = np.zeros((d.shape[0], 2, 2))+np.nan
+
+    #
+    locs = []
+    epochs = []
+    for k in range(d.shape[1]):
+
+        temp = d[:,k,0]
+
+        # f1ind where there are tracks
+        try:
+            idx1 = np.where(np.isnan(temp[:,0])==False)[0]
+        except:
+            continue
+        
+        if idx1.shape[0]<2:
+            continue
+
+        # 
+        bouts, n_bouts = extract_bouts_of_sequential_integers(idx1)
+        if len(bouts)>0:
+            if n_bouts>1:
+                for b in bouts:
+                    epochs.append([b[0],b[-1]])
+                    locs.append(temp[b])
+            else:
+                epochs.append([bouts[0],bouts[-1]])
+                locs.append(temp[bouts])
+    
+    #
+    if len(epochs)==0:
+        np.save(fname_out, final_track)
+        return
+
+    #
+    epochs = np.vstack(epochs)
+    locs = np.array(locs)
+    idx = np.argsort(epochs[:,0])
+    epochs = epochs[idx]
+    locs = locs[idx]
+
+    for k in range(len(epochs)):
+        epoch = epochs[k]
+        loc = locs[k]
+        if np.isnan(final_track[epoch[0]:epoch[1]+1, 0]).all():
+            final_track[epoch[0]:epoch[1]+1, 0] = loc
+        else:
+            final_track[epoch[0]:epoch[1]+1, 1] = loc
+        
+    np.save(fname_out, final_track)
+#
+
+def convert_blocks_parallel(fname,
+                           root_dir):
+
+    ##################### PROCESS MIXED VIDEOS ###########
+    if "Both" in fname:
+        
+        fname_day = os.path.join(root_dir,'blocks',
+                                 fname).replace(
+                                'Both.slp','Day.slp')
+        
+        if os.path.exists(fname_day)==False:
+            print ("can't find : ", fname_day)
+        else:
+
+            try:
+                t = track.Track(fname_day)
+                t.fname=fname_day
+
+                #
+                t.slp_to_npy()
+            except:
+                print ("Conversion prcess failed: ", fname_day)
+        
+        #######################
+        fname_night = os.path.join(root_dir,'blocks',
+                                 fname).replace(
+                                'Both.slp','Night.slp')
+        if os.path.exists(fname_night)==False:
+            print ("can't find : ", fname_night)
+        else:
+            try:
+                t = track.Track(fname_night)
+                t.fname=fname_night
+
+                #
+                t.slp_to_npy()
+            except:
+                print ("Conversion prcess failed: ", fname_day)
+        
+    else:
+         #fname = cohort.tracks_blocks[k]
+        if os.path.exists(fname)==False:
+            print ("can't find: ", fname)
+        else:
+            try:
+                t = track.Track(fname)
+                t.fname=fname
+
+                #
+                t.slp_to_npy()
+            except:
+                print ("Conversion prcess failed: ", fname)

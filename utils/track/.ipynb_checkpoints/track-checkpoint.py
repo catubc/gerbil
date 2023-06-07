@@ -141,8 +141,10 @@ class Track():
                                 axis=2)
 
         #
-        self.get_track_spine_centers()
-
+        try:
+            self.get_track_spine_centers()
+        except:
+            print ("spine missing can't be computed")
     #
     def bin_track_spines(self):
         #
@@ -1576,12 +1578,13 @@ def find_id_switches_single_file(input,
     if overwrite_flag == True or os.path.exists(fname_out) == False:
 
         #
-        try:
+        if True:
             track = Track(fname_slp)
             track.track_type = 'features'
+            track.exclude_huddles = False
             track.use_dynamic_centroid = True  # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
             track.load_tracks()
-        except:
+        else:
             print ("Missing : ", fname_slp)
             return
         #### FIND ALL ID SWITCHES IN MOVIE ####
@@ -2694,7 +2697,7 @@ class DatabaseLoader():
         fnames_vids = []
         
         #
-        for dd in self.df.iterrows():
+        for dd in tqdm(self.df.iterrows()):
 
             #
             if dd[1]['NN Type']== self.nn_type:
@@ -2708,6 +2711,12 @@ class DatabaseLoader():
                 if os.path.exists(temp)==False:
                     continue
                                                
+                # also test if the file works
+                #if True:
+                #    labels = sleap.load_file(temp)
+                #else:
+                #    continue
+                
                 
                 fnames_slp.append(os.path.join(self.root_dir,
                                                self.input_dir,
@@ -2717,18 +2726,50 @@ class DatabaseLoader():
                                                 fname_vid))
         #
         print ("\nrunning .slp preprocessing and id_switch detection ...")
-        self.find_id_switches_parallel(fnames_slp,
+        if self.skip_id_switch_make==False:
+            self.find_id_switches_parallel(fnames_slp,
                                        fnames_vids,
                                        self.n_cores)
-
-        print ("\ndone running .slp preprocessing and id_switch detection ...")
+            print ("\ndone running .slp preprocessing and id_switch detection ..., # files: ", len(fnames_slp))
         
-        # make the id-switch only deleted slp files
-        print ("\nmaking shortened id_switch .slp files...")
-        self.make_deleted_slp_files_parallel(fnames_slp,
-                                             fnames_vids,
-                                             self.n_cores,
-                                             self.nn_type)
+            # make the id-switch only deleted slp files
+            print ("\nmaking shortened id_switch .slp files...")
+            self.make_deleted_slp_files_parallel(fnames_slp,
+                                                 fnames_vids,
+                                                 self.n_cores,
+                                                 self.nn_type)
+            
+        # load the already completed id switch files 
+        else:
+            for dd in tqdm(self.df.iterrows()):
+
+                #
+                if dd[1]['NN Type']== self.nn_type:
+
+                    fname_vid = dd[1]['Filename']
+                    fname_slp = dd[1]['Slp filename']
+
+                    fname_slp = os.path.join(self.root_dir,
+                                                   self.input_dir,
+                                                   fname_slp[:-4]+"_deleted.slp")
+                    if os.path.exists(fname_slp)==False:
+                        continue
+
+                    # also test if the file works
+                    #if True:
+                    #    labels = sleap.load_file(temp)
+                    #else:
+                    #    continue
+
+
+                    fnames_slp.append(os.path.join(self.root_dir,
+                                                   self.input_dir,
+                                                   fname_slp))
+                    fnames_vids.append(os.path.join(self.root_dir,
+                                                    self.input_dir,
+                                                    fname_vid))
+
+
             
         # make the hybrid video containing all the id-switch frames
         print ("\nmaking shortened id_switch video file...")
