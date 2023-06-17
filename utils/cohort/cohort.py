@@ -1402,7 +1402,202 @@ class CohortProcessor():
         plt.xlabel("Time (hr)")
         plt.title("Full Huddle Ethogram")
         plt.show()
+        
+    #
+    def make_flattened_ethogram(self):
+        print ('cohort.rectangle_ethogram', self.rectangle_ethogram.shape)
 
+        #
+        corrected_ethogram = self.rectangle_ethogram[::-1]
+        print ("correctd ethogram: ", corrected_ethogram.shape)
+        #
+        ethogram_flat = []
+        for k in range(0,corrected_ethogram.shape[0],7):
+            temp = corrected_ethogram[k:k+6]
+            ethogram_flat.append(temp.T)
+        ethogram_flat = np.vstack(ethogram_flat).T
+        print (ethogram_flat.shape)
+
+        self.ethogram_flat = ethogram_flat
+
+    #
+    def get_ROI_behaviors(self):
+
+        day_starts = self.ROI_days
+        day_ends = self.ROI_days+1
+        animals1 = np.arange(6)
+        animals2 = np.arange(6)
+
+        behaviors = np.zeros((16,6,6,2,2))+np.nan
+
+
+        #
+        for d in tqdm(self.ROI_days):
+            day_start = day_starts[d]
+            day_end = day_ends[d]
+            #
+            times = np.arange(day_start*24*60*60,
+                              day_end*24*60*60)
+
+            #
+            ethogram_flat_selected = self.ethogram_flat[:,times].copy()
+
+            #
+            for k in animals1:
+
+                #
+                for p in animals2:
+
+                    #
+                    t1 = ethogram_flat_selected[k].copy()
+                    idx = np.where(t1>0)[0]
+                    t1[idx]=1
+
+                    #
+                    t2 = ethogram_flat_selected[p].copy()
+                    idx = np.where(t2>0)[0]
+                    t2[idx]=1
+
+                    # find order of events
+                    a1 = 0     #the number of times animal 1 precedes animal 2
+                    a11 = 0
+
+                    #
+                    ctr = 0
+                    while ctr<t1.shape[0]-1:
+                    #for i in idx1:
+
+                        # check to see if there is a switch from 0
+                        if t1[ctr]==0 and t1[ctr+1]==1:
+                            a1+=1
+
+                            # and see if the other animal also switches exactly then:
+                            if t2[ctr]==0 and np.nansum(t2[ctr+1:ctr+self.follow_window])>0:
+                                a11+=1
+                                # advance ctr to afetr the first animal finishes the behavior
+                            #
+                            ctr+=self.follow_window
+
+                            # once bheavior found, advance time to next non-behavior
+                            while ctr<(t1.shape[0]-2) and t1[ctr]==1:
+                                ctr+=1
+                                continue
+
+
+                        ctr+=1
+                    #
+                    behaviors[d,k,p,0,0] = a1
+                    behaviors[d,k,p,0,1] = a11
+
+                    #print ("d, p, k : ", d, p , k, " , a1, a11: ", a1, a11)
+
+                    ########################################
+                    #
+                    a2 =0
+                    a22 = 0
+                    ctr = 0
+                    while ctr<t2.shape[0]-1:
+                    #for i in idx1:
+
+                        # check to see if there is a switch from 0
+                        if t2[ctr]==0 and t2[ctr+1]==1:
+                            a2+=1
+
+                            # and see if the other animal also switches exactly then:
+                            if t1[ctr]==0 and np.nansum(t1[ctr+1:ctr+self.follow_window])>0:
+                                a22+=1
+                                # advance ctr to afetr the first animal finishes the behavior
+
+                            #
+                            ctr+=self.follow_window
+
+                            # advance the time to next non-behavior
+                            while ctr<(t2.shape[0]-2) and t2[ctr]==1:
+                                ctr+=1
+                                continue
+
+                        ctr+=1
+
+                    #
+                    behaviors[d,k,p,1,0] = a2
+                    behaviors[d,k,p,1,1] = a22
+
+        # 
+        print ("DONE...")
+
+        self.ROI_behaviors = behaviors
+    
+    #
+    def plot_ROI_traces(self):
+        
+        #
+        plt.figure(figsize=(10,10))
+
+        # plot the absolute number of behaviors per day for each animal *using 10sec lockout usually
+        ax=plt.subplot(2,2,1)
+        for k in range(6):
+            plt.plot(self.ROI_behaviors[:,k,k,0,0],
+                     label="Abs: "+str(k)+" vs "+ str(k))
+        plt.legend()
+        plt.xlabel("PDay")
+        plt.title("# of events per animal")
+
+        # 
+        a1 = self.a1
+        # for single animal plot the number of times it carried out behavior while being followed
+        ax=plt.subplot(2,2,2)
+        for k in range(6):
+            temp2 = self.ROI_behaviors[:,a1,k,0,1]
+            if a1==k:
+                continue
+            plt.plot(temp2,
+                     label="Abs: " + str(a1)+ " vs " + str(k)) 
+
+        plt.legend()
+        plt.xlabel("PDay")
+        plt.title("# of follower events for animal: "+str(a1))
+
+        ###########################################
+        ax=plt.subplot(2,2,3)
+        for k in range(6):
+            temp1 = self.ROI_behaviors[:,a1,k,0,1]
+            temp2 = self.ROI_behaviors[:,a1,k,1,1]
+            if a1==k:
+                continue
+
+            #
+            plt.plot(temp1/(temp1+temp2),
+                     label="ratio: " + str(a1)+ " vs " + str(k)) 
+
+        plt.legend()
+        plt.xlabel("PDay")
+        plt.title("Ratio of leader/follower for animal: "+str(a1))
+
+        ###########################################
+        ax=plt.subplot(2,2,4)
+        for k in range(6):
+            temp1 = self.ROI_behaviors[:,a1,k,0,1]
+            temp2 = self.ROI_behaviors[:,a1,k,0,0]
+            if a1==k:
+                continue
+
+            #
+            plt.plot(temp1/(temp1+temp2),
+                     label="ratio: " + str(a1)+ " vs " + str(k)) 
+
+        plt.legend()
+        plt.xlabel("PDay")
+        plt.title("Ratio of following/total entries: "+str(a1))
+
+
+        ###################
+        plt.suptitle("Animal: "+str(a1))
+        #
+        plt.ylim(bottom=0)
+        plt.show()
+
+        
+        
     def show_rectangle_composition_ethogram_all_animals(self):
         
  #      
@@ -1510,8 +1705,8 @@ class CohortProcessor():
         hopper_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#e66912'])
         .with_extremes(over='0.25', under='0.75'))
         
-        food_hopper = np.load('/home/cat/Downloads/rois/food_hopper.npy')         
-        plt.imshow(food_hopper.T[::-1],
+        food_hopper = np.load('/home/cat/Downloads/rois/foodhopper.npy')         
+        plt.imshow(food_hopper,
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
@@ -1522,7 +1717,7 @@ class CohortProcessor():
         .with_extremes(over='0.25', under='0.75'))
          
         waterspout = np.load('/home/cat/Downloads/rois/waterspout.npy')         
-        plt.imshow(waterspout.T[::-1],
+        plt.imshow(waterspout,
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
@@ -1533,7 +1728,7 @@ class CohortProcessor():
         .with_extremes(over='0.25', under='0.75'))
          
         house = np.load('/home/cat/Downloads/rois/house.npy')         
-        plt.imshow(house.T[::-1],
+        plt.imshow(house,
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
@@ -2207,12 +2402,19 @@ def remove_huddles(fnames,
 
     fname_features, fname_huddles = fnames[0], fnames[1]
 
+    fname_out = fname_features.replace('.npy','_nohuddle.npy')
+
+    if os.path.exists(fname_out):
+        return
+    
+    
     #
     try:
         huddles = np.load(fname_huddles)
         features = np.load(fname_features)
     except:
-        print('missing:', fname_huddles, fname_features)
+        print('missing on of these:', fname_huddles, fname_features)
+        return
 
     #
     for k in range(huddles.shape[0]):
@@ -2237,7 +2439,6 @@ def remove_huddles(fnames,
             features[k,idx]=np.nan
     
     # basically both videos straddling the light change should get the same output then...
-    fname_out = fname_features.replace('.npy','_nohuddle.npy')
     np.save(fname_out, features)
 
     
