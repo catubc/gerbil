@@ -43,6 +43,31 @@ class CohortProcessor():
         
         #
         self.fps = 24
+        
+        
+    def load_features_no_huddles(self):
+        
+        n_files = 0
+        self.tracks = []
+        for k in range(self.fnames_slp.shape[0]):
+
+            temp = self.fnames_slp[k][0].replace('.mp4',"_"+self.NN_type[k][0]+'_spine_nohuddle.npy')
+            
+            #
+            temp = os.path.join(self.root_dir,
+                                'features',
+                                temp
+                               )
+            if k==0:
+                print ("fname: ", temp)
+            
+            if os.path.exists(temp):
+                temp = np.load(temp)
+                self.tracks.append(temp)
+                n_files+=1
+                
+        print ("found: ", n_files, " of total : ", self.fnames_slp.shape[0])
+                
 
     #
     def remove_huddles_from_feature_tracks(self):
@@ -847,7 +872,9 @@ class CohortProcessor():
         track_local2 = track_local[idx]
         idx2 = np.where(np.all(np.logical_and(track_local2>=lower_left,
                                      track_local2 <= upper_right), axis=1))[0]
-        #print (track_local2.shape, idx2.shape)
+        #print ("lower_left: ", lower_left,
+        #       "upper right: ", upper_right,
+        #       "Found # of frames in rectangle: ", idx2.shape)
 
         return idx2.shape[0]/track_local.shape[0]*100
 
@@ -1187,7 +1214,7 @@ class CohortProcessor():
 
         fig, ax1 = plt.subplots(figsize=(13,10))
        # #line, = ax1.plot(x, y, 'o', picker=10)
-        plt.ylim(0,700)
+        plt.ylim(0,self.max_y)
 
         #
         track_local = np.load(self.fname_slp_npy)
@@ -1279,7 +1306,7 @@ class CohortProcessor():
     def load_video2(self):
         
         import av
-        print ("ASSUMING VIDEO IS 700 x 900... this only works for cohort2...")
+        #print ("ASSUMING VIDEO IS 700 x 900... this only works for cohort2...")
 
         container = av.open(self.fname_video)
 
@@ -1294,7 +1321,7 @@ class CohortProcessor():
                 
                 
 
-        self.video_frame = frame.to_ndarray()[:700]#[::-1]
+        self.video_frame = frame.to_ndarray()[:self.max_y]#[::-1]
       
         
     #
@@ -1695,29 +1722,31 @@ class CohortProcessor():
         huddle_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#c0bcb5'])
         .with_extremes(over='0.25', under='0.75'))
         
-        plt.imshow(self.huddle_ethogram.T[::-1],
+        huddle_eth = np.load('/home/cat/Downloads/cohort4_huddle/cohort4_huddle_comp.npy')
+        
+        plt.imshow(huddle_eth.T[::-1],
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
                   cmap=huddle_cmap
                   )
         
-        hopper_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#e66912'])
+        hopper_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#fbce3a'])
         .with_extremes(over='0.25', under='0.75'))
         
         food_hopper = np.load('/home/cat/Downloads/rois/foodhopper.npy')         
-        plt.imshow(food_hopper,
+        plt.imshow(food_hopper.T,
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
                   cmap=hopper_cmap
                   )
         
-        water_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#fbce3a'])
+        water_cmap = (matplotlib.colors.ListedColormap(['#ffffff00', '#e66912'])
         .with_extremes(over='0.25', under='0.75'))
          
         waterspout = np.load('/home/cat/Downloads/rois/waterspout.npy')         
-        plt.imshow(waterspout,
+        plt.imshow(waterspout.T,
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
@@ -1728,7 +1757,7 @@ class CohortProcessor():
         .with_extremes(over='0.25', under='0.75'))
          
         house = np.load('/home/cat/Downloads/rois/house.npy')         
-        plt.imshow(house,
+        plt.imshow(house.T,
                   aspect='auto',
                   interpolation = "None",
                   extent= [0,24,14.5,30.5],
@@ -2117,7 +2146,7 @@ def compute_rectangle_occupancy_second2(track_local,
     #
     idx2 = np.where(np.all(np.logical_and(track_local>=lower_left,
                                  track_local <= upper_right), axis=1))[0]
-    #print (track_local2.shape, idx2.shape)
+    #print ("Found # of time s in the rectangle: ", idx2.shape)
 
     # make empty array
     locs = np.zeros(track_local.shape[0])

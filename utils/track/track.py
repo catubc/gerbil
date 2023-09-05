@@ -101,6 +101,8 @@ class Track():
                 
                 tracks.append(group2[k])
         except:
+            
+            # recompute tracks
             os.remove(fname_h5)
             self.load_slp()
             self.slp.export(fname_h5)
@@ -130,10 +132,18 @@ class Track():
         #
         self.verbose=False
         fname_npy = self.fname_slp[:-4] + '.npy'
+        
+        #
         if os.path.exists(fname_npy) == False:
+            
+            #
             if self.verbose:
                 print("... npy missing, converting...")
+            
+            #
             self.slp_to_npy()
+            
+            #
             if self.verbose:
                 print("... done loading npy")
 
@@ -153,6 +163,7 @@ class Track():
             self.get_track_spine_centers()
         else:
             print ("spine missing can't be computed")
+            
     #
     def bin_track_spines(self):
         #
@@ -200,7 +211,7 @@ class Track():
             ################## COMPUTE SPINES FOR ANIMAL TRACKS ###############
             # initialize spine to nans
             self.tracks_spine = np.zeros((self.tracks.shape[0],
-                                          self.tracks.shape[1],
+                                          self.n_animals,
                                           self.tracks.shape[3]))*0 + np.nan
 
             #if self.n_animals==4:
@@ -211,6 +222,9 @@ class Track():
             else:
                 ids = self.centroid_body_id
 
+            #
+           # print (self.tracks.shape)
+                
             # search over all times
             for n in range(self.tracks.shape[0]):
 
@@ -219,10 +233,14 @@ class Track():
 
                     # search over all body ids for the first non-nan
                     for id_ in ids:
-                        if np.isnan(self.tracks[n,a,id_,0])==False:
-                            # this overwrites the "spine" with the first non-zero value
-                            self.tracks_spine[n,a]=self.tracks[n,a,id_]
-                            break
+                        try:
+                            if np.isnan(self.tracks[n,a,id_,0])==False:
+                                # this overwrites the "spine" with the first non-zero value
+                                self.tracks_spine[n,a]=self.tracks[n,a,id_]
+                                break
+                        except:
+                            #print (".... something bad with track, can't grab spine, skipping rest of animal...")
+                            pass
 
             np.save(fname_spine, self.tracks_spine)
         else:
@@ -932,7 +950,10 @@ class Track():
                 for a in range(len(self.slp[n])):
                     name = self.slp[n][a].track.name
                     idx = self.tracks_names.index(name)
-                    self.scores[n, idx] = self.slp[n][a].score
+                    try:
+                        self.scores[n, idx] = self.slp[n][a].score
+                    except:
+                        pass
 
             np.save(fname_scores, self.scores)
 
@@ -1452,109 +1473,118 @@ def filter_trace(data,
 
 #
 def detect_id_switch3(tracks,
-                     animal_id,
-                     max_n_nans=0):
+                      animal_id,
+                      max_n_nans=0):
     #
     other_animal_ids = np.int32(np.delete(np.arange(6), animal_id))
 
-    # select animal_id track
-    track = tracks[:, animal_id]
-
-    # calculate the feature-wise distance between current frame and next frame
-    ctr = 0
+    #
     frame_ids = []
-    corner = 300
-    for k in range(tracks.shape[0] - 1): # desc='finding id switches in movie'):
-        feats0 = track[k]
 
-        for a in other_animal_ids:
-            feats1 = tracks[k + 1, a]
+    #
+    try:
+        #
+        track = tracks[:, animal_id]
 
-            #
-            dists = np.linalg.norm(feats1 - feats0, axis=1)
+        # calculate the feature-wise distance between current frame and next frame
+        ctr = 0
+        corner = 300
+        for k in range(tracks.shape[0] - 1): # desc='finding id switches in movie'):
+            feats0 = track[k]
 
-            #
-            med = np.nanmedian(dists)
+            for a in other_animal_ids:
+                feats1 = tracks[k + 1, a]
 
-            # if the median distance is low
-            if med < 15:
                 #
-                n = np.count_nonzero(np.isnan(dists))
-                # if n<=(6-min_n_features):
-                if n == max_n_nans:
-                    # also skip switches in the huddle
-                    if np.nanmedian(feats0[:, 0]) > corner:
-                        if np.nanmedian(feats0[:, 1]) > corner:
-                            frame_ids.append([k, k + 1, animal_id, a])
+                dists = np.linalg.norm(feats1 - feats0, axis=1)
 
-                        ctr += 1
-                # else:
-                #    print ("n toolow: ", n)
+                #
+                med = np.nanmedian(dists)
+
+                # if the median distance is low
+                if med < 15:
+                    #
+                    n = np.count_nonzero(np.isnan(dists))
+                    # if n<=(6-min_n_features):
+                    if n == max_n_nans:
+                        # also skip switches in the huddle
+                        if np.nanmedian(feats0[:, 0]) > corner:
+                            if np.nanmedian(feats0[:, 1]) > corner:
+                                frame_ids.append([k, k + 1, animal_id, a])
+
+                            ctr += 1
+                
+    except:
+        pass
+    
     print("found: ", len(frame_ids), " switches")
     return frame_ids
 
 
-def find_id_switches(fnames_slp_list):
-    fnames_slp = np.loadtxt(fnames_slp_list,
-                            dtype='str')
+# def find_id_switches(fnames_slp_list):
+    
+#     #
+#     fnames_slp = np.loadtxt(fnames_slp_list,
+#                             dtype='str')
 
-    #
-    overwrite_flag = True
+#     #
+#     overwrite_flag = True
 
-    #
-    for fname_slp in fnames_slp:
+#     #
+#     for fname_slp in fnames_slp:
 
-        #
-        animal_ids = np.arange(6)
+#         #
+#         animal_ids = np.arange(6)
 
-        #
-        fname_out = fname_slp[:-4] + "_all_frames_with_switches.npy"
+#         #
+#         fname_out = fname_slp[:-4] + "_all_frames_with_switches.npy"
 
-        #
-        if overwrite_flag == True or os.path.exists(fname_out) == False:
+#         #
+#         if overwrite_flag == True or os.path.exists(fname_out) == False:
 
-            #
-            track = Track(fname_slp)
-            track.track_type = 'features'
-            track.use_dynamic_centroid = True  # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
-            track.load_tracks()
+#             #
+#             track = Track(fname_slp)
+#             track.track_type = 'features'
+#             track.use_dynamic_centroid = True  # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
+#             track.load_tracks()
 
-            #### FIND ALL ID SWITCHES IN MOVIE ####
-            all_frames = []
+#             #### FIND ALL ID SWITCHES IN MOVIE ####
+#             all_frames = []
 
-            if False:
-                for animal_id in animal_ids:
-                    # for animal_id in [2]:
-                    frame_ids = detect_id_switch3(track.tracks,
-                                                  animal_id)
-                    if len(frame_ids) > 0:
-                        all_frames.append(frame_ids)
-            else:
+#             if True:
+#                 for animal_id in animal_ids:
+#                     # for animal_id in [2]:
+#                     frame_ids = detect_id_switch3(track.tracks,
+#                                                   animal_id)
+#                     if len(frame_ids) > 0:
+#                         all_frames.append(frame_ids)
+#             else:
 
-                res = parmap.map(detect_id_switch_parallel,
-                                 animal_ids,
-                                 track.tracks)
-                all_frames = []
-                for r in res:
-                    if len(r) > 0:
-                        all_frames.append(r)
+#                 res = parmap.map(detect_id_switch_parallel,
+#                                  animal_ids,
+#                                  track.tracks)
+#                 all_frames = []
+#                 for r in res:
+#                     if len(r) > 0:
+#                         all_frames.append(r)
 
-                        #
-            all_frames = np.vstack(all_frames)
-            # print ("all frames: ", all_frames.shape)
+#                         #
+#             all_frames = np.vstack(all_frames)
+#             # print ("all frames: ", all_frames.shape)
 
-            idx = np.argsort(all_frames[:, 0])
-            all_frames = all_frames[idx]
+#             idx = np.argsort(all_frames[:, 0])
+#             all_frames = all_frames[idx]
 
-            #
-            #print("filename completed: ", fname_slp)
-            print("all frames: ", all_frames.shape)
+#             #
+#             #print("filename completed: ", fname_slp)
+#             print("all frames: ", all_frames.shape)
 
-            #
-            np.save(fname_out, all_frames)
+#             #
+#             np.save(fname_out, all_frames)
 
 def find_id_switches_parallel(fnames_slp,
                               fnames_vids,
+                              n_animals,
                               n_cores):
 
     if True:
@@ -1562,8 +1592,11 @@ def find_id_switches_parallel(fnames_slp,
 
         parmap.map(find_id_switches_single_file,
                    in_,
+                   n_animals,
                    pm_pbar = True,
-                   pm_processes = n_cores)
+                   pm_processes = n_cores,
+                  # pm_parallel = False
+                  )
 
 
 
@@ -1571,6 +1604,7 @@ def find_id_switches_parallel(fnames_slp,
 
 
 def find_id_switches_single_file(input,
+                                 n_animals,
                                  overwrite_flag = False):
 
     #
@@ -1591,33 +1625,33 @@ def find_id_switches_single_file(input,
             track.track_type = 'features'
             track.exclude_huddles = False
             track.use_dynamic_centroid = True  # True: alg. serches for the first non-nan value in this body order [2,3,1,0,4,5]
+            track.n_animals = n_animals
             track.load_tracks()
-        else:
-            print ("Missing : ", fname_slp)
-            return
+#         else:
+#             print ("Missing : ", fname_slp)
+#             return
+        
         #### FIND ALL ID SWITCHES IN MOVIE ####
         all_frames = []
+        for animal_id in animal_ids:
+            # for animal_id in [2]:
+            frame_ids = detect_id_switch3(track.tracks,
+                                          animal_id)
+            if len(frame_ids) > 0:
+                all_frames.append(frame_ids)
+#         else:
 
-        if False:
-            for animal_id in animal_ids:
-                # for animal_id in [2]:
-                frame_ids = detect_id_switch3(track.tracks,
-                                              animal_id)
-                if len(frame_ids) > 0:
-                    all_frames.append(frame_ids)
-        else:
-
-            try:
-                res = parmap.map(detect_id_switch_parallel,
-                             animal_ids,
-                             track.tracks)
+#             try:
+#                 res = parmap.map(detect_id_switch_parallel,
+#                              animal_ids,
+#                              track.tracks)
                              
-                all_frames = []
-                for r in res:
-                    if len(r) > 0:
-                        all_frames.append(r)
-            except:
-                print(f"skipped {fname_slp}")
+#                 all_frames = []
+#                 for r in res:
+#                     if len(r) > 0:
+#                         all_frames.append(r)
+#             except:
+#                 print(f"skipped {fname_slp}")
 
                     #
         if len(all_frames)>0:
@@ -1740,7 +1774,7 @@ def make_deleted_slp_files_parallel(fnames_slp,
 
     in_ = list(zip(fnames_slp, fnames_vids))
 
-    if False:
+    if True:
         parmap.map(make_deleted_slp_files, 
                    in_,
                    nn_type,
@@ -1915,10 +1949,6 @@ def make_hybrid_slp(slp_files,
         return
 
     #
-    #slp_files = np.loadtxt(fnames_slp_list, dtype='str')
-    #print ("slp_list: ", fnames_slp_list)
-    #slp_files = fnames_slp_list
-
     n_frames = 0
     all_frames = []
     reference_tracks = {}
@@ -1929,7 +1959,10 @@ def make_hybrid_slp(slp_files,
     #
     first_labels = None
     for slp_file in slp_files:
-
+        
+        #
+        print ("slp file: ", slp_file)
+        
         # replace slp_file with the deleted version
         if "deleted" in slp_file:
             pass
@@ -1937,10 +1970,21 @@ def make_hybrid_slp(slp_files,
             slp_file = slp_file[:-4]+"_deleted.slp"
 
         # Load saved labels.
-        labels = sleap.load_file(slp_file, match_to=first_labels)
+        try:
+            labels = sleap.load_file(slp_file, match_to=first_labels)
+        except:
+            print ("deleting: ", slp_file)
+            os.remove(slp_file)
+            continue
+        
+        #except:
+        #    print ("Can't load: ", slp_file)
+        #continue
+        
         if first_labels is None:
             first_labels = labels
-
+        
+        #
         new_frames = []
         for i, lf in enumerate(labels):
 
@@ -2404,7 +2448,7 @@ def make_hybrid_video_from_list2(fnames_slp, fnames_vids, fname_out_cropped):
         #
         all_frames = np.load(fname_vid[:-4] + '_all_frames_with_switches.npy')
         if len(all_frames)==0:
-            print ("video has not frames: ", fname_vid)
+            print ("video has no switch frames, : ", fname_vid)
             
         # load movie name
         idx = fname_slp.find("compressed")
@@ -2897,6 +2941,50 @@ class DatabaseLoader():
 #    #
     def make_id_switch_files(self):
 
+        
+        # make deleted filse first
+        if self.skip_id_switch_make==False:
+            
+            #
+            print ("Making dleted .slp files")
+            
+            #
+            fnames_slp = []
+            fnames_vids = []
+        
+            for dd in tqdm(self.df.iterrows()):
+
+                #
+                if dd[1]['NN Type']== self.nn_type:
+
+                    fname_vid = dd[1]['Filename']
+                    fname_slp = dd[1]['Slp filename']
+                    
+                    fnames_slp.append(os.path.join(self.root_dir,
+                                               self.input_dir,
+                                               fname_slp))
+                        
+                    fnames_vids.append(os.path.join(self.root_dir,
+                                                self.input_dir,
+                                                fname_vid))
+
+            print (" ...   recomputing id switches parallel")
+            self.find_id_switches_parallel(fnames_slp,
+                                           fnames_vids,
+                                           self.n_animals,
+                                           self.n_cores)
+            
+            #
+            print ("    ... done running .slp preprocessing and id_switch detection ..., # files: ", len(fnames_slp))
+        
+            # make the id-switch only deleted slp files
+            print ("     ...making shortened id_switch .slp files...")
+            self.make_deleted_slp_files_parallel(fnames_slp,
+                                                 fnames_vids,
+                                                 self.n_cores,
+                                                 self.nn_type)
+        
+        
         #
         #############################################################
         # load the already completed id switch files 
@@ -2934,23 +3022,7 @@ class DatabaseLoader():
                                                 self.input_dir,
                                                 fname_vid))
         
-        #
-        if self.skip_id_switch_make==False:
-            print ("\nrecomputing id switches parallel")
-            self.find_id_switches_parallel(fnames_slp,
-                                           fnames_vids,
-                                           self.n_cores)
-            
-            #
-            print ("\ndone running .slp preprocessing and id_switch detection ..., # files: ", len(fnames_slp))
-        
-            # make the id-switch only deleted slp files
-            print ("\nmaking shortened id_switch .slp files...")
-            self.make_deleted_slp_files_parallel(fnames_slp,
-                                                 fnames_vids,
-                                                 self.n_cores,
-                                                 self.nn_type)
-        
+     
         #
         print ("ALL SLP VIDS: ", np.vstack(fnames_slp)[:10])
 
@@ -2968,16 +3040,7 @@ class DatabaseLoader():
         print (" # of slps found: ", len(fnames_slp))
         print (" # of vids found: ", len(fnames_vids))
         
-        # remove the ids of the slp files that couldn't be created 
-#         if False:
-#             fnames_slp2 = []
-#             for k in range(len(fnames_slp)):
-#                 if k in remove_ids:
-#                     pass
-#                 else:
-#                     fnames_slp2.append(fnames_slp[k])
 
-#             fnames_slp = fnames_slp2       
         
         
         # combine all deleted .slp files into a single slp

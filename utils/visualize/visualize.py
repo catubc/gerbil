@@ -135,7 +135,11 @@ class Visualize():
                             end,
                             fps,
                             shrink):
-
+        #
+        print ("input tracks size: ", tracks.shape)
+        
+        
+        #
         colors = [
             (0, 0, 255),
             (255, 0, 0),
@@ -195,8 +199,9 @@ class Visualize():
         font = cv2.FONT_HERSHEY_PLAIN
 
         # loop over frames
+        history_len = self.history_len
         histories = np.zeros((tracks.shape[1],
-                              5, 2), 'float32') + np.nan
+                              history_len, 2), 'float32') + np.nan
         print("Histories: ", histories.shape)
 
         #
@@ -241,24 +246,29 @@ class Visualize():
                 y = tracks[n, i, 1]
 
                 try:
-                    histories[i, 1:] = histories[i, :4]
+                    histories[i, 1:] = histories[i, :history_len-1]
                     histories[i, 0, 0] = x
                     histories[i, 0, 1] = y
                 except:
-                    print ("history error...")
-                    histories[i, 1:] = histories[i, :4]
+                    #print ("history error...")
+                    histories[i, 1:] = histories[i, :history_len-1]
                     histories[i, 0, 0] = np.nan
                     histories[i, 0, 1] = np.nan
 
                 # plot centroids and history lines
-                for h in range(5):
-                    center_coordinates = (histories[i, h, 0], histories[i, h, 1])
+                for h in range(history_len):
+                    
+                    # plot centroids
+                    try:
+                        center_coordinates = (int(histories[i, h, 0]), int(histories[i, h, 1]))
+                    except:
+                        continue
                     # if i==0:
 
                     # check centre points
                     idx = np.where(np.isnan(center_coordinates) == True)[0]
                     if idx.shape[0] == 0:
-                        radius = int(dot_size * (1 - h / 5 / 2))
+                        radius = int(dot_size * (1 - h / history_len / 2))
                         frame = cv2.circle(frame,
                                            center_coordinates,
                                            radius,
@@ -267,12 +277,15 @@ class Visualize():
                     else:
                         continue
 
-                    # draw lines
-                    if h < 4:
+                    # plot lines connecting centroids
+                    if h < (history_len-1):
                         start_point = center_coordinates
-                        end_point = (histories[i, h + 1, 0],
-                                     histories[i, h + 1, 1])
-
+                        try:
+                            end_point = (int(histories[i, h + 1, 0]),
+                                     int(histories[i, h + 1, 1]))
+                        except:
+                            continue
+                            
                         idx = np.where(np.isnan(end_point) == True)[0]
                         if idx.shape[0] == 0:
                             # Line thickness of 9 px
@@ -290,6 +303,218 @@ class Visualize():
 
         video_out.release()
         original_vid.release()
+        
+    def make_video_centroid_velocity(self,
+                            tracks,
+                            fname_video,
+                            fname_video_out,
+                            start,
+                            end,
+                            fps,
+                            shrink):
+        #
+        print ("input tracks size: ", tracks.shape)
+        
+        # calculate the velocities for each animal in each frame
+        diffs = np.diff(tracks, axis=0)
+        squared_diffs = diffs ** 2
+        velocities = np.sqrt(np.sum(squared_diffs, axis=-1))  # velocities is (n_frames-1, n_animals)
+        
+        # apply box filter
+        def apply_box_filter(velocity, box_size):
+            box_filter = np.ones(box_size)/box_size
+            filtered_velocity = np.convolve(velocity, box_filter, mode='same')
+            return filtered_velocity
+        
+        # width of the filter (number of points for the moving average)
+        filter_width = 100
+
+        # apply the filter to the signal
+        filtered_velocities = np.zeros_like(velocities)
+        for animal in range(2):
+            for dim in range(2):
+                filtered_velocities[:, animal] = apply_box_filter(velocities[:, animal], filter_width)
+                
+        from bottleneck import nanmedian  # This function can ignore np.nan values
+
+        # Assuming velocities is your array
+        N, num_animals = velocities.shape  # This gives you 28802, 2
+        window_size = 10
+
+        # Initialize an output array of the same size
+        filtered_velocities = np.zeros_like(velocities)
+
+        # Iterate over the second dimension (i.e., number of animals)
+        for i in range(num_animals):
+            # Apply the moving median to this slice of the velocities
+            filtered_velocities[:, i] = np.array([nanmedian(velocities[max(0, k-window_size):min(N, k+window_size), i]) for k in range(N)])
+
+
+        #
+        colors = [
+            (0, 0, 255),
+            (255, 0, 0),
+            (0, 255, 0),
+            (255, 255, 0),
+            (255, 0, 255),
+
+            (0, 255, 255),
+            (0, 128, 255),
+            (0, 128, 128),
+            (128, 0, 128),
+            (128, 128, 0),
+
+
+        ]
+
+        #
+        names = ['female', 'male', 'pup1', 'pup2', 'pup3','pup4']
+        clrs = ['blue', 'red', 'cyan', 'green', 'pink','brown']
+
+        if start is None:
+            start = 0
+        if end is None:
+            end = tracks.shape[0]
+
+        # load and videos
+        video_name = fname_video
+        fname_out = (video_name[:-4] + '_' + str(start) + "_" + str(end) + '_'+ fname_video_out+'.mp4')
+        if False:  # os.path.exists(fname_out):
+            print("fname: exists", fname_out)
+            return
+            
+        # rescale tracks
+        tracks= tracks/shrink
+
+        # load original vid
+        original_vid = cv2.VideoCapture(video_name)
+        
+        width = original_vid.get(cv2.CAP_PROP_FRAME_WIDTH )
+        height = original_vid.get(cv2.CAP_PROP_FRAME_HEIGHT )
+        fps_out =  fps
+
+        print ("width, heigh: ", width,height)
+        # video settings
+        size_vid = np.int32(np.array([width, height])/shrink)
+        dot_size = int(12/shrink)
+        thickness = -1
+        #print ("size vid: ", size_vid)
+        
+        # make new video
+        fourcc = cv2.VideoWriter_fourcc('M', 'P', 'E', 'G')
+        video_out = cv2.VideoWriter(fname_out, fourcc, fps_out, (size_vid[0], size_vid[1]), True)
+        
+        # set frames to new ones
+        original_vid.set(cv2.CAP_PROP_POS_FRAMES, start)
+
+        font = cv2.FONT_HERSHEY_PLAIN
+
+        # loop over frames
+        history_len = self.history_len
+        histories = np.zeros((tracks.shape[1],
+                              history_len, 2), 'float32') + np.nan
+        print("Histories: ", histories.shape)
+
+        #
+        for n in trange(start, end-1, 1):
+
+            # for n in trange(start, 100, 1):
+            ret, frame = original_vid.read()
+
+            # scale frame
+            #print ("Frame: ", frame.shape, type(frame[0][0][0]))
+            #frame = frame[::shrink, ::shrink]
+            #print ("Frame: ", frame.shape, type(frame[0][0][0]))
+            shrink_ratio = 1/shrink
+            frame = cv2.resize(frame, # original image
+                       (0,0), # set fx and fy, not the final size
+                       fx=shrink_ratio,
+                       fy=shrink_ratio,
+                       interpolation=cv2.INTER_NEAREST)
+
+            # print frame #
+            cv2.putText(frame,
+                        str(n),
+                        (int(50/shrink), int(150/shrink)),
+                        font,
+                        int(10/shrink),
+                        (255, 255, 0),
+                        5)
+
+            # print velocities for each animal
+            if n > start:  # can't calculate velocity for the first frame
+                for i in range(tracks.shape[1]):
+                    #velocity_text = "{:.2f}".format(velocities[n-1, i])
+
+                    # adjust the y-coordinate for each animal to avoid overlap
+                    #y_coordinate = int((50 * (i+1))/shrink)  # adjust vertical position for each animal
+
+                    # adjust x-coordinate to move text to the top right corner
+                    #x_coordinate = int(width/shrink - 200) 
+
+
+                    #color = (0, 0, 255) if i == 0 else (255, 0, 0)
+                    #cv2.putText(frame,
+                                #velocity_text,
+                                #(x_coordinate, y_coordinate),
+                                #font,
+                                #int(2/shrink),  
+                               # color,
+                                #2)
+                                
+                    # get the FILTERED velocities of each animal
+                    vel_animal1 = filtered_velocities[n, 0]
+                    vel_animal2 = filtered_velocities[n, 1]
+                    
+                    # get the NON-FILTERED velocities of each animal
+                    # vel_animal1 = velocities[n, 0]
+                    # vel_animal2 = velocities[n, 1]
+                    
+                    # Prepare the texts
+                    vel1_text = str(round(vel_animal1, 2)) if vel_animal1 > 5 else ""
+                    vel2_text = str(round(vel_animal2, 2)) if vel_animal2 > 5 else ""
+                    # vel1_text = str(round(vel_animal1, 2))
+                    # vel2_text = str(round(vel_animal2, 2))
+
+                    # Display the velocities at the bottom left corner
+                    cv2.putText(frame, vel1_text, (int(50/shrink), int(height-110/shrink)), font, int(5/shrink), (0, 0, 255), 3)
+                    cv2.putText(frame, vel2_text, (int(50/shrink), int(height-50/shrink)), font, int(5/shrink), (255, 0, 0), 3)
+
+            #
+            for i in range(tracks.shape[1]):
+                color = colors[i]  # (255, 0, 0)
+
+                # for f in range(tracks.shape[2]):
+                x = tracks[n, i, 0]
+                y = tracks[n, i, 1]
+
+                try:
+                    histories[i, 1:] = histories[i, :history_len-1]
+                    histories[i, 0, 0] = x
+                    histories[i, 0, 1] = y
+                except:
+                    #print ("history error...")
+                    histories[i, 1:] = histories[i, :history_len-1]
+                    histories[i, 0, 0] = np.nan
+                    histories[i, 0, 1] = np.nan
+
+                for ii in range(history_len):
+                    try:
+                        cv2.circle(frame,
+                                   (np.int(histories[i, ii, 0]),
+                                    np.int(histories[i, ii, 1])),
+                                   dot_size,
+                                   color,
+                                   thickness)
+                    except:
+                        pass
+
+            # write
+            video_out.write(np.uint8(frame))
+
+        #
+        video_out.release()
+
 
     #
     def make_video_pre_and_post(self,
