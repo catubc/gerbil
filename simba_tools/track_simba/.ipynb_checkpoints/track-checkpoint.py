@@ -9,7 +9,10 @@ import scipy.spatial
 from scipy import signal
 from scipy import ndimage
 from scipy.optimize import linear_sum_assignment
+from sklearn.linear_model import LinearRegression
+import pandas as pd
 
+#
 import sys
 if not sys.warnoptions:
     import warnings
@@ -59,7 +62,7 @@ class Track():
     def slp_to_npy(self):
 
         fname_h5 = self.fname_slp[:-4] + ".h5"
-        if os.path.exists(fname_h5) == False:
+        if os.path.exists(fname_h5) == False or self.recompute_h5:
             if self.verbose:
                 print("... h5 file missing, converting now...")
             self.slp_to_h5()
@@ -106,6 +109,58 @@ class Track():
         #
         self.get_track_spine_centers()
 
+    
+    def compute_angles_from_features(self):
+    
+        # 
+        print (self.tracks.shape)
+        angles = np.zeros((self.tracks.shape[0], 
+                            self.tracks.shape[1]))+np.nan
+        dists = np.zeros((self.tracks.shape[0], 
+                            self.tracks.shape[1]))+np.nan
+        #
+        for k in trange(self.tracks.shape[0]):
+            for p in range(self.tracks.shape[1]):
+                temp = self.tracks[k,p]
+                
+                # sum and select only rows with non-nans
+                s = temp.sum(1)
+                idx = np.where(np.isnan(s)==False)[0]
+                temp = temp[idx]
+                
+                if temp.shape[0]>1:
+                    # 
+                    angles[k,p] = get_features_angle(temp)
+                    
+                    # get dists to projection - not used for now
+                    if False:
+                        # check if the 2nd animal has a centroid
+                        temp2 = self.tracks_centers[k,p]
+                        idx = np.where(np.isnan(temp2))[0]
+                        if idx.shape[0]==0:
+                            dists[k,p] = get_shortest_dists(temp, temp2)
+                    
+        
+        #
+        self.angles = angles
+        #self.dists = dists
+        
+        #
+        if self.smooth_angles:
+            
+            for k in range(2):
+                s = pd.Series(self.angles[:,k])
+                s_interpolated = s.interpolate()
+                
+                #
+                window = 25
+                polyorder = 3
+                self.angles[:,k] = signal.savgol_filter(s_interpolated,
+                                                window,
+                                                polyorder)
+            
+        
+
     def get_track_spine_centers(self):
         '''  This function returns single locations per animal
             with a focus on spine2, spine3, spine1 etc...
@@ -147,7 +202,7 @@ class Track():
             Loop over the tcrs and check if jumps are too high to re-break track
         '''
 
-        print ("... Making tracks chunks...")
+       # print ("... Making tracks chunks...")
 
         # break distances that are very large over single jumps
         # join by time
@@ -244,7 +299,7 @@ class Track():
  
     #
     def del_short_chunks(self, min_chunk_len=2):
-        print ("Deleting chunks < ", min_chunk_len)
+        #print ("Deleting chunks < ", min_chunk_len)
         for a in range(len(self.tracks_chunks)):
             chunks = np.array(self.tracks_chunks[a])
 
@@ -687,7 +742,7 @@ class Track():
                    t_end=None):
 
         #
-        print ("... Fixing tracks...")
+        #print ("... Fixing tracks...")
 
         #
         if t==None or t_end==None:
@@ -773,7 +828,7 @@ class Track():
                 except:
 
                     if self.update_tracks:
-                        print ("UPDATING TRACKS")
+                        #print ("UPDATING TRACKS")
                         self.tracks_chunks = self.tracks_chunks_fixed
                         self.tracks_spine = self.tracks_spine_fixed
 
@@ -798,7 +853,63 @@ class Track():
         pbar.close()
 
         if self.update_tracks:
-            print ("UPDATING TRACKS")
+           # print ("UPDATING TRACKS")
             self.tracks_chunks = self.tracks_chunks_fixed
             self.tracks_spine = self.tracks_spine_fixed
 
+
+
+#
+def get_features_angle(points):
+
+    if False:
+        x = points[:,0].reshape(-1,1)
+        y = points[:,1]
+
+        #
+        model = LinearRegression()
+        model.fit(x,y)
+        
+        #
+        slope = model.coef_[0]
+        
+        #
+        #angle_rad = np.arctan(slope)
+        angle_rad = np.arctan2(slope, 1)
+    else:
+        delta_y = points[-1,1] - points[0,1]
+        delta_x = points[-1,0] - points[0,0]
+        
+        angle_rad = np.arctan2(delta_y, delta_x)
+    
+    
+    #
+    #angle_degrees = np.degrees()
+    
+    return angle_rad
+
+
+def get_shortest_dists(points, centre_animal2):
+    
+    x = points[:,0].reshape(-1,1)
+    y = points[:,1]
+
+    #
+    model = LinearRegression()
+    model.fit(x,y)
+    
+    #
+    slope = model.coef_[0]
+    
+    A = - slope
+    B = 1
+    C = -model.intercept_
+    
+    point = centre_animal2
+    
+    #
+    distance = np.abs(A*point[0] + B*point[1]+C)/np.sqrt(A**2+B**2)
+    
+    #
+    return distance
+    

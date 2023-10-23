@@ -10,7 +10,6 @@ def get_ratio2(t1, t2, idx1, idx2, follow_window):
     #
     ctr = 0
     while ctr<idx1.shape[0]:
-    #for i in idx1:
 
         # idx1[ctr] are times when animal 1 is inside the roi
         # so we try to see what the animal 2 is doing at that time and the following

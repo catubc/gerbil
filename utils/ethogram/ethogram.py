@@ -1281,10 +1281,10 @@ def generate_ethogram_hourly(
 
     #
     data = cohort.data.copy()
-    print ("cohort data: ", cohort.data.shape)
+    #print ("cohort data: ", cohort.data.shape)
     day = data[0][0]
     start_day = day.copy()
-   # print ("start day: ", day)
+    #print ("start day: ", day)
 
     #
     time = data[0][1]
@@ -1331,8 +1331,58 @@ def generate_ethogram_hourly(
 
     #
     np.save(fname_out, img)
+
+#
+def plot_ethogram_development(
+                         behavior_name,
+                         cohort,
+                         exclude_huddles,
+                         vmax):
+
+    n_partitions=24
+
+    fname_in = os.path.join(cohort.root_dir,
+                             behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
+                             +str(exclude_huddles)+ '.npy')
+
+    img = np.load(fname_in)[::-1]
+    
+    print ("img: ", img.shape)
+    
+    temp = np.sum(img,axis=1)
+    
+    temp = np.mean(img,1)
+    print ("temp: ", temp.shape)
+    
+    plt.plot(temp, label=str(cohort.animal_ids))
+    
+    plt.legend()
+
+#
+def plot_ethogram_development_averages(
+                                     behavior_name,
+                                     cohort,
+                                     exclude_huddles,
+                                     vmax):
+
+
+    fname_in = os.path.join(cohort.root_dir,
+                             behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
+                             +str(exclude_huddles)+ '.npy')
+
+    img = np.load(fname_in)
+    
+    #temp = np.sum(img,axis=1)
+    
+    temp = np.mean(img,1)
+
     
     #
+    plt.plot(temp, label=str(cohort.animal_ids))
+    
+    plt.legend()
+    
+#
 def plot_ethogram_hourly(
                          behavior_name,
                          cohort,

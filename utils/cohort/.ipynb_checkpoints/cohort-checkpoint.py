@@ -18,6 +18,12 @@ from track import track
 from convert import convert
 from ethogram import ethogram
 
+try:
+    from utils_local.utils import get_ratio2
+except:
+    print ("couldn't load get_ratio2")
+
+
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -69,6 +75,37 @@ class CohortProcessor():
         print ("found: ", n_files, " of total : ", self.fnames_slp.shape[0])
                 
 
+    def find_voc_to_slp_match(self):
+
+        # 
+        fnames_slp = self.fnames_slp.squeeze()
+        #print (fnames_slp.shape)
+
+        #
+        temp = []
+        for fname in fnames_slp:
+            fname = fname.replace('_compressed.mp4','')
+            temp.append(fname)
+
+        fnames_slp = np.hstack(temp)
+
+        # find matches between video and voc cohorts:
+        fname_match_id = []
+        for ctr,fname_voc in enumerate(self.fnames_voc):
+            #print (fname)
+            fname_voc = str(fname_voc.replace('_merged.wav',''))
+            #print (temp)
+            idx = np.where(fnames_slp == fname_voc)[0]
+
+            if idx.shape[0]>0:
+                fname_match_id.append([ctr, idx[0]])
+
+        #
+        matches = np.array(fname_match_id)
+        print ("Matches: ", matches.shape)
+
+        self.matches_vocalizations_to_slps = matches
+            
     #
     def remove_huddles_from_feature_tracks(self):
 
@@ -467,31 +504,47 @@ class CohortProcessor():
         
     #
     def compute_huddle_composition(self):
-
+        
+        
+        # fname_out
+        fname_out = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+                                 'huddle_composition_ethogram.npy')
+        print ("fname_out:", fname_out)
+        
         #
-        if self.parallel_flag:
-            self.huddle_comps_binned = parmap.map(compute_huddle_parallel,
-											   self.tracks_features_fnames,
-											   #self.tracks_features[:50],
-											   self.median_filter_width,
-											   self.n_frames_per_bin,
-											   pm_processes = self.n_cores,
-											   pm_pbar = True
-											   )
+        if os.path.exists(fname_out):
+            self.huddle_comps_binned = np.load(fname_out,allow_pickle=True)
+            
         else:
-            self.huddle_comps_binned = []
-            for s in trange(len(self.tracks_features_fnames)):
-                session = self.tracks_features_fnames[s]
 
-                huddle_comp_binned = compute_huddle_parallel(
-                                                        session,
-                                                        self.median_filter_width,
-                                                        self.n_frames_per_bin,
-                                                        )
+            #
+            if self.parallel_flag:
+                self.huddle_comps_binned = parmap.map(compute_huddle_parallel,
+                                                   self.tracks_features_fnames,
+                                                   #self.tracks_features[:50],
+                                                   self.median_filter_width,
+                                                   self.n_frames_per_bin,
+                                                   pm_processes = self.n_cores,
+                                                   pm_pbar = True
+                                                   )
+            else:
+                self.huddle_comps_binned = []
+                for s in trange(len(self.tracks_features_fnames)):
+                    session = self.tracks_features_fnames[s]
 
-                self.huddle_comps_binned.append(huddle_comp_binned)
+                    huddle_comp_binned = compute_huddle_parallel(
+                                                            session,
+                                                            self.median_filter_width,
+                                                            self.n_frames_per_bin,
+                                                            )
 
+                    self.huddle_comps_binned.append(huddle_comp_binned)
 
+            #
+            np.save(fname_out, self.huddle_comps_binned)
+        # maybe save this array
+        
+        
     #
     def load_feature_tracks(self):
         #
@@ -1092,6 +1145,38 @@ class CohortProcessor():
         plt.show()
 
 
+            #
+    def get_pairwise_interaction_time_nohuddle(self, a1, a2):
+        
+        #
+        names = ['female','male','pup1','pup2','pup3','pup4']
+        self.animals_interacting = ''+names[self.animal_ids[0]] + " " + names[self.animal_ids[1]]
+
+        #
+        res=[]
+        for k in range(0,1500,1):
+            self.track_id = k
+            locs = self.load_single_feature_spines_nohuddle()
+
+            # if track is missing, skip it
+            if locs is None:
+                res.append(0)
+                continue
+
+            #
+            self.symmetric_matrices=False
+            self.plotting=False
+            try:
+                temp = self.compute_pairwise_interactions_from_numpy(locs, a1, a2, k)
+            except:
+                temp = np.nan
+            #
+            res.append(temp)
+
+        res = np.array(res)
+
+        self.res = res
+        
     #
     def get_pairwise_interaction_time(self, a1, a2):
 
@@ -1128,13 +1213,16 @@ class CohortProcessor():
     #
     def format_behavior(self):
 
-        #
+        # so here we match some behavior with each recording based on time day etc.
         self.data = []
         for k in range(self.PDays.shape[0]):
 
             PDay = self.PDays[k]
             time = self.Start_times[k]
-            self.data.append([int(PDay[1:]), time.hour, self.res[k]])
+            #print ("time: :", time)
+            temp_temp = [int(PDay[1:]), time.hour, self.res[k]]
+            #print ("temp_temp: ", temp_temp)
+            self.data.append(temp_temp)
 
         #
         self.data = np.vstack(self.data)
@@ -1143,14 +1231,22 @@ class CohortProcessor():
         # compute average per hour
         self.data_ave = []
         s = []
-        s.append(self.data[0,2])
+        #s.append(self.data[0,2])
         for k in range(0,self.data.shape[0]-1,1):
-            if self.data[k,1]==self.data[k+1,1]:
-                s.append(self.data[k+1,2])
+            # if two recordings arein the same hour we keep stacking the data in some list s
+            if self.data[k,1]==self.data[k+1,1]:   # if it's the same hour then add the behavior to the list for that hour
+                s.append(self.data[k,2])
+            # if time changes, we compute the average inthe list; 
             else:
-                temp = self.data[k]
-                temp[2] = np.mean(s)
+                s.append(self.data[k,2])
+                temp = self.data[k]      # grab the day and hour information
+                temp[2] = np.nanmean(s)   # replace the result with some aveage version
                 self.data_ave.append(temp)
+
+                #
+               # print ("chaging hour, s ", s, " and temp: ", temp)
+                
+                # start a new list for the hour
                 s=[]
 
         self.data = np.vstack(self.data_ave)
@@ -1165,6 +1261,25 @@ class CohortProcessor():
     def compress_video(self):
         pass
 
+      #
+    def load_single_feature_spines_nohuddle(self):
+
+   
+        
+        try:
+            fname = os.path.join(os.path.split(self.fname_spreadsheet)[0],
+                                 'features',
+                                self.fnames_slp[self.track_id][0].replace('.mp4','')
+                                + "_"+self.NN_type[self.track_id][0]
+                                 + "_spine_nohuddle.npy")   
+            t = np.load(fname)
+        except:
+            pass
+            t = None
+            
+        
+        return t
+    
     #
     def load_single_feature_spines(self):
 
@@ -1187,7 +1302,10 @@ class CohortProcessor():
         #
         t.exclude_huddles = self.exclude_huddles
         t.track_type = 'feature'
-        t.get_track_spine_centers()
+        try:
+            t.get_track_spine_centers()
+        except:
+            return None
 
         return t
 
@@ -1986,9 +2104,119 @@ class CohortProcessor():
 
         #
         self.rectangle_ethogram = np.array(img).T[::-1]
-        np.save('/home/cat/Downloads/rois/rectangle_ethogram.npy', self.rectangle_ethogram)
         #print ("img.sha: ", img.shape)
+        
+    #
+    def compute_pairwise_interactions_from_numpy(self,locs, a1, a2, session_id):
 
+        #
+        x_ticks=['female','male','pup1','pup2','pup3','pup4']
+
+
+        self.distance_threshold = 100 # # of pixels away assume 1 pixel ~= 0.5mm -> 20cm
+        
+        # this scales the distance a bit more for cohrots3 and 4 which have more pixels / cm
+        self.distance_threshold = self.distance_threshold*self.video_scaling_factor
+        time_window = 1*25 # no of seconds to consider
+        self.smoothing_window = 3
+       # min_distance = 25 # number of frames window
+       # fps=24
+        min_time_together = 5   # minimum 5 frames spent together
+        
+        #
+        locs = locs.transpose(1,0,2)
+        traces_23hrs = locs
+
+        # COMPUTE PAIRWISE INTERACTIONS
+        animals=np.arange(locs.shape[0])
+        interactions = np.zeros((animals.shape[0],animals.shape[0]),'int32') + np.nan
+        durations_matrix = np.zeros((animals.shape[0], animals.shape[0]),'int32') + np.nan
+
+        #interactions = np.zeros(1)+np.na
+        #durations_matrix = np.zeros(1)+np.nan
+        
+        ########################################################
+        ########################################################
+        ########################################################
+        # loop over all pairwise combinations
+        pair_interaction_times = []
+        pairs1 = [a1, a2]
+        #for pair in tqdm(pairs1, desc='pairwise computation'):
+        traces = []
+
+        # smooth out traces;
+        for k in pairs1:
+            traces1=traces_23hrs[k].copy()
+            traces1[:,0]=np.convolve(traces_23hrs[k,:,0], np.ones((self.smoothing_window,))/self.smoothing_window, mode='same')
+            traces1[:,1]=np.convolve(traces_23hrs[k,:,1], np.ones((self.smoothing_window,))/self.smoothing_window, mode='same')
+            traces1 = traces1
+            traces.append(traces1)
+
+        # COMPUTE PAIRWISE DISTANCES AND NEARBY TIMES POINTS
+        idx_array = []
+        diffs = np.sqrt((traces[0][:,0]-traces[1][:,0])**2+
+                        (traces[0][:,1]-traces[1][:,1])**2)
+        idx = np.where(diffs<self.distance_threshold)[0]
+        
+        #
+        #print ("idx for close distacnes: ", idx)
+
+        # delete very short interations
+        ll = np.zeros(diffs.shape[0])
+        ll[idx] = 1
+        #print ("diffs: ", ll)
+        #print ("all times close: ", idx.shape[0], idx[:500], idx[500:])
+
+        from scipy.signal import find_peaks, peak_widths
+        peaks, _ = find_peaks(ll)  # middle of the pluse/peak
+        widths, heights, starts, ends = peak_widths(ll, peaks)
+
+        #print ("widths: ", widths)
+        #
+        starts_ends = np.int32(np.vstack((starts, ends)).T+0.5)
+        #print ("starts_ends: ", starts_ends)
+
+        # keep only starts_ends that are at least 5 in width
+        starts_ends = starts_ends[widths >= min_time_together]
+        #print ("starts_ends: ", starts_ends)
+        # keep only starts_end from idx array
+        idx2 = []
+        for i in range(starts_ends.shape[0]):
+            idx2.append(diffs[starts_ends[i,0]:starts_ends[i,1]])
+        #print ("idx2: ", idx2)
+        # COMPUTE # OF INTERACTIONS;
+        interactions=len(idx2)
+
+        # COMPUTE TOTAL TIME TOGETHER
+        if len(idx2)>0:
+            idx2 = np.hstack(idx2)
+        else:
+            #print (" recording: ", session_id, "mice: ", pairs1, " have no time together: ")
+            idx2 = np.zeros(0)
+
+       # print (" times close > 5 frames: ", idx2.shape[0])
+        durations_matrix=idx2.shape[0]
+
+        # SAVE TIMES OF INTERACTION
+        pair_interaction_times = idx
+
+        # SYMMETRIZE MATRICES
+        #if self.symmetric_matrices:
+        #    for k in range(durations_matrix.shape[0]):
+        #        for j in range(durations_matrix.shape[1]):
+        #            if np.isnan(durations_matrix[k,j])==False:
+        #                durations_matrix[j,k]=durations_matrix[k,j]
+        #                interactions[j,k]=interactions[k,j]
+
+        # #################################################
+        # ######### PLOT INTERACTIONS PAIRWISE ############
+        # #################################################
+        dur_matrix_percentage = durations_matrix/(locs.shape[1])*100
+
+        return dur_matrix_percentage
+
+    
+    
     #
     def compute_pairwise_interactions(self,track):
 
@@ -2597,3 +2825,282 @@ def convert_blocks_parallel(fname,
                 t.slp_to_npy()
             except:
                 print ("Conversion prcess failed: ", fname)
+
+                
+                
+#
+def generate_developmental_roi_sequences(root_dir, 
+                                         follow_window,
+                                         ethogram_flat_selected,
+                                         behavior_type,
+                                         animal_selected):
+
+    #
+    fname_out = os.path.join(root_dir,
+                             "animal_"+str(animal_selected)+
+                             "_roi_sequences.npz")
+    
+
+    
+    #
+    xlim=0
+    ratios = np.empty((16,6,6))
+    # ratios[:] = np.nan
+    a1_array = ratios.copy()
+    a2_array = ratios.copy()
+
+    #
+    total_entries_absolute = np.empty((16,6))
+
+    #
+    day_starts = np.arange(17)
+    day_ends = np.arange(1,17,1)
+
+
+    #
+    ethogram_flat_selected1 = ethogram_flat_selected.copy()
+    #
+
+
+    #
+    #for d in trange(16):
+    for d in trange(day_starts[0],
+                    day_starts[-1],
+                    1):
+        day_start = day_starts[d]
+        day_end = day_ends[d]
+
+        # note we're converting day to seconds ; our ethogram is in seconds!
+        times = np.arange(day_start*24*60*60,
+                          day_end*24*60*60)
+
+        # so we select the data from the ethogram which is dimensiotns [n_animals, all_times]
+        ethogram_flat_selected2 = ethogram_flat_selected1[:,times].copy()
+        #for k in trange(6):
+        for k in [animal_selected]:
+            #for p in range(k+1,6,1):
+            # select time series for animal 1 and convert to boolean values
+            t1 = ethogram_flat_selected2[k].copy()
+            idx1 = np.where(t1>0)[0]
+
+            # so here we take into account only when the animal enters - not if it's already there.
+            idx11 = np.where(np.diff(idx1) == 1)[0] + 1 
+            idx1 = idx1[idx11]
+
+            #print ("THIS MIGHT BE Conceptually different behavior: We are interested in actual entries into the box, not all the times the animal is there...")
+            #print ("So what we're getting is whether while an animal was in the ROI anothre animal visited w/in 10sec; )
+            if behavior_type == 'enter_roi':
+                t1[idx1] = 1
+            else:
+                t1 = t1*0+1
+                t1[idx1] = 0
+
+            #
+            total_entries_absolute[d,animal_selected] = idx1.shape[0]
+
+            #
+            for p in range(6):
+                if k==p:
+                    continue           
+
+                # select time series for an2imal 2 and convert to booleans
+                t2 = ethogram_flat_selected2[p].copy()
+                idx2 = np.where(t2>0)[0]
+                idx22 = np.where(np.diff(idx2) == 1)[0] + 1 
+                idx2 = idx2[idx22]
+                if behavior_type == 'enter_roi':
+                    t2[idx2] = 1
+                else:
+                    t2 = t2*0+1
+                    t2[idx2] = 0
+
+                total_entries_absolute[d,p] = idx2.shape[0]
+                #ratio, a1, a2 = get_ratio2_into_roi(t1, t2, idx1, idx2, follow_window)
+                ratio, a1, a2 = get_ratio2(t1, t2, idx1, idx2, follow_window)
+
+                #
+                ratios[d,k,p] = ratio
+                a1_array[d,k,p] = a1
+                a2_array[d,k,p] = a2
+
+    
+    # save the runs
+    np.savez(fname_out,
+             animal_selected = animal_selected,
+             ratios = ratios,
+             a1_array = a1_array,
+             a2_array = a2_array,
+             total_entries_absolute = total_entries_absolute
+            )
+    
+    print ("Done saving : ", fname_out)
+    
+    
+    
+def flatten_invert_ethogram(cohort):
+    
+    print ("rectangle ethogram: ", cohort.rectangle_ethogram.shape)
+
+    #
+    eth_transposed = cohort.rectangle_ethogram.T
+    print ("eth transposed: ", eth_transposed.shape)
+
+    #
+    ethogram_flat = []
+
+    for k in range(1, eth_transposed.shape[1],7):
+        temp = eth_transposed[:,k:k+6]
+        #print (temp.shape)
+        ethogram_flat.append(temp)
+    ethogram_flat = np.vstack(ethogram_flat).T
+    print ("ethogram flat: ", ethogram_flat.shape)
+
+    ethogram_flat_selected = ethogram_flat.copy()
+    print (ethogram_flat_selected.shape)
+
+
+    print ("Note: the ids are inverted to go from 5.. 0. So we invert them to get back to female ==0 identity") 
+    ethogram_flat_selected = ethogram_flat_selected[::-1]
+    
+    return ethogram_flat_selected
+
+
+
+def plot_dev_roi_sequences(root_dir,
+                           animal_selected,
+                          behavior_type,
+                          follow_window):
+    
+    #
+    labels = ['female','male','pup1','pup2','pup3','pup4']
+    #clrs = ['red','blue','green','black','purple','orange']
+    clrs = ['#cb3311', '#4477aa', '#ccbb44', '#228833', '#ee7733', '#66ccee']
+    markers = ["," , "o" , "v" , "^" , "<", ">"]
+
+        #
+    fname_in = os.path.join(root_dir,
+                             "animal_"+str(animal_selected)+
+                             "_roi_sequences.npz")
+    
+    d = np.load(fname_in, allow_pickle=True)
+    
+    
+    animal_selected = d['animal_selected']
+    ratios = d['ratios']
+    a1_array = d['a1_array']
+    a2_array = d['a2_array']
+    total_entries_absolute = d['total_entries_absolute']
+    
+    # 
+    ymax = 150
+
+
+    plt.figure(figsize=(15,5))
+    ax=plt.subplot(131)
+    t = np.arange(ratios.shape[0])+15
+    for k in range(6):
+        if k == animal_selected:
+            continue
+        plt.plot(t,ratios[:,animal_selected,k], c= clrs[k], label = labels [k])
+    plt.legend()
+    plt.ylim(0,1)
+    plt.plot([t[0], t[-1]],
+             [0.5, 0.5],
+             '--')
+    plt.xlabel("Pday")
+    plt.ylabel("Ratios")
+
+    #############################################################################
+    # show absolute values
+    ax2=plt.subplot(132)
+    for k in range(6):
+        if k == animal_selected:
+            continue
+        ax2.plot(t,a1_array[:,animal_selected,k], c= clrs[k], label = labels [k])
+    plt.legend()
+    plt.ylim(0,ymax)
+    #plt.plot([t[0], t[-1]],
+    #         [0.5, 0.5],
+    #         '--')
+    plt.xlabel("Pday")
+    plt.ylabel("Absolute #s " + str(animal_selected)+ " first")
+
+    #############################################################################
+    # show absolute values
+    ax3=plt.subplot(133)
+    for k in range(6):
+        if k == animal_selected:
+            continue
+        ax3.plot(t,a2_array[:,animal_selected,k], c= clrs[k], label = labels [k])
+    plt.legend()
+    plt.ylim(0,ymax)
+    #plt.plot([t[0], t[-1]],
+    #         [0.5, 0.5],
+    #         '--')
+
+    plt.xlabel("Pday")
+    plt.ylabel("Absolute #s (other animals first)")
+
+    #plt.title(labels[animal_selected]+ " " + behavior_type)
+    if behavior_type=='enter_roi':
+        plt.suptitle("Animals following "+labels[animal_selected]+  " into roi ("+str(follow_window)+ " sec window)")
+    else:
+        plt.suptitle("Animals following "+labels[animal_selected]+  " exiting roi ("+str(follow_window)+ " sec window)")
+    plt.show()
+    
+    
+    
+#
+def compute_dist_travelled(tr,
+                          px_per_m):
+    min_dist = 3
+    max_dist = 50
+    window_size = 11
+    poly_order = 2
+
+    #
+    dist_array = np.zeros(6)
+    
+    #
+    for animal_index in range(6):
+        try:
+            positions = tr[:, animal_index]
+        except:
+            continue
+
+        # filter positions
+        positions[:,0] = scipy.signal.savgol_filter(positions[:, 0], window_size, poly_order)
+        positions[:,1] = scipy.signal.savgol_filter(positions[:, 0], window_size, poly_order)
+
+        #
+        #print ("Positions: ", positions)
+
+        # 
+        centroid_diff = positions[1:]-positions[:-1]
+       # print ("centroid diff: ", centroid_diff)
+
+
+        # Calculate the distance between consecutive points
+        distances = np.linalg.norm(centroid_diff, axis=1)
+       # print ("distances: ", distances)
+
+        # Filter out movements less than the minimum threshold (3 units) and greater than the maximum threshold (50 units)
+        idx = np.where(distances<=min_dist)[0]
+        idx2 = np.where(distances>=max_dist)[0]
+
+        idx = np.hstack((idx,idx2))            
+        distances = distances[idx]
+
+
+        # Convert the actual_movement from pixels to centimeters
+        distances = distances / px_per_m
+
+        # Calculate the distance traveled using Euclidean distance
+        # dist = np.nansum(distance.cdist(actual_movement_cm[:-1], actual_movement_cm[1:]))
+        dist = np.nansum(distances)
+
+        ##print ("animal ", animal_index, " , travelled: ", dist, "meteres in ~20mins")
+       # distance_per_day[dev_day - 15, animal_index] += dist
+        dist_array[animal_index] = dist
+        
+    return dist_array

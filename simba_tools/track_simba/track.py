@@ -62,7 +62,7 @@ class Track():
     def slp_to_npy(self):
 
         fname_h5 = self.fname_slp[:-4] + ".h5"
-        if os.path.exists(fname_h5) == False:
+        if os.path.exists(fname_h5) == False or self.recompute_h5:
             if self.verbose:
                 print("... h5 file missing, converting now...")
             self.slp_to_h5()
@@ -202,7 +202,7 @@ class Track():
             Loop over the tcrs and check if jumps are too high to re-break track
         '''
 
-        print ("... Making tracks chunks...")
+       # print ("... Making tracks chunks...")
 
         # break distances that are very large over single jumps
         # join by time
@@ -299,7 +299,7 @@ class Track():
  
     #
     def del_short_chunks(self, min_chunk_len=2):
-        print ("Deleting chunks < ", min_chunk_len)
+        #print ("Deleting chunks < ", min_chunk_len)
         for a in range(len(self.tracks_chunks)):
             chunks = np.array(self.tracks_chunks[a])
 
@@ -742,7 +742,7 @@ class Track():
                    t_end=None):
 
         #
-        print ("... Fixing tracks...")
+        #print ("... Fixing tracks...")
 
         #
         if t==None or t_end==None:
@@ -828,7 +828,7 @@ class Track():
                 except:
 
                     if self.update_tracks:
-                        print ("UPDATING TRACKS")
+                        #print ("UPDATING TRACKS")
                         self.tracks_chunks = self.tracks_chunks_fixed
                         self.tracks_spine = self.tracks_spine_fixed
 
@@ -853,7 +853,7 @@ class Track():
         pbar.close()
 
         if self.update_tracks:
-            print ("UPDATING TRACKS")
+           # print ("UPDATING TRACKS")
             self.tracks_chunks = self.tracks_chunks_fixed
             self.tracks_spine = self.tracks_spine_fixed
 
