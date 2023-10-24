@@ -155,9 +155,6 @@ class GerbilPCA():
     #
     def get_dev_plots(self):
 
-        # 
-        labels = np.arange(16,30,1)
-
         #
         dev_changes = np.zeros((len(self.behaviors),14))
         dev_stable = np.zeros((len(self.behaviors),14))
@@ -165,8 +162,10 @@ class GerbilPCA():
         #
         for k in trange(len(self.behaviors)):
 
-            #
+            # select a specific behavior
             self.behavior_id = k
+
+            #
             t1_m = self.get_sliding_window_dists()
 
             #
@@ -187,6 +186,65 @@ class GerbilPCA():
         #         
         self.dev_changes = dev_changes
         self.dev_stable = dev_stable
+
+    #
+    def get_area_under_curve(self):
+
+        # 
+        temp_stack = np.vstack(self.stack)
+        temp_starts = np.vstack(self.starts)
+
+        # compute area under the curve for the first temp-stack
+        auc_f = []
+        for k in range(temp_starts[0][0], temp_starts[0][1],1):
+            auc_f.append(np.trapz(temp_stack[k], dx=1))
+
+        # same for the rest of the temp_stack
+        auc_m = []
+        for k in range(temp_starts[1][0], temp_starts[1][1],1):
+            auc_m.append(np.trapz(temp_stack[k], dx=1))
+
+        #
+        auc_f = np.array(auc_f)
+        auc_m = np.array(auc_m)
+
+        #
+        print ("auc_f mean: ", np.mean(auc_f), " ,std: ", np.std(auc_f))
+        print ("auc_m mean: ", np.mean(auc_m), " ,std: ", np.std(auc_m))
+        
+        #
+        self.auc_f = auc_f
+        self.auc_m = auc_m
+
+        self.ks_ = ks_2samp(auc_f, auc_m)
+
+        # test the distributions for significance using ttest
+        ttest = stats.ttest_ind(auc_f, auc_m)
+        self.ttest = ttest
+        
+    #
+    def plot_area_under_curve(self):    
+        # plot scatter plot for each auc array separately in two columns
+        plt.figure(figsize=(10,5))
+        plt.subplot(111)
+
+        plt.scatter(self.auc_f*0, self.auc_f,
+                    c=self.clrs[0])
+        plt.scatter(self.auc_m*0+1, self.auc_m,
+                    c=self.clrs[1])
+        
+        # test the distributions for significance using 2 sample ks test
+        ks_ = ks_2samp(auc_f, auc_m)
+        print ("ks test: ", ks_)
+
+        # test the distributions for significance using ttest
+        ttest = stats.ttest_ind(auc_f, auc_m)
+        print ("ttest: ", ttest)
+
+        #
+
+        plt.show()
+
 
     #
     def compute_dev_stages_histogram(self):
@@ -375,7 +433,6 @@ class GerbilPCA():
         if self.interpolate_first_value:
             temp1 = self.data[self.behavior_id][:,0:self.sliding_window_size].copy()
             temp2 = self.data[self.behavior_id][:,self.sliding_window_size:2*self.sliding_window_size].copy()
-
             res = self.compute_signficance(temp1, temp2)
 
             t1_array[1] = res
@@ -386,6 +443,7 @@ class GerbilPCA():
             # grab chunk 1 of data
             temp1 = self.data[self.behavior_id][:,t1:t1+self.sliding_window_size].copy()
             temp2 = self.data[self.behavior_id][:,t1+self.sliding_window_size:t1+2*self.sliding_window_size].copy()
+            #print ("temp1: ", temp1.shape)
 
             res = self.compute_signficance(temp1, temp2)
 
@@ -395,7 +453,7 @@ class GerbilPCA():
         #
         return t1_array
     
-    #
+    # 
     def compute_signficance(self, temp1, temp2):
 
         # flatten each chunk 
@@ -493,14 +551,16 @@ class GerbilPCA():
     
     #
     def plot_mean_behavior(self):
+
         # plot the time series first
-
-
         plt.figure(figsize=(10,10))
         ctr=0
         for s in self.stack:
             mean = np.mean(s,axis=0)
             std = np.std(s,axis=0)
+
+            #
+            print ("mean: ", np.mean(s), " std: ", np.std(s))
 
             # get standard error
             sem = std/np.sqrt(s.shape[0])
@@ -522,9 +582,7 @@ class GerbilPCA():
                              color=self.clrs[ctr])
             #
             plt.title(self.behaviors[self.behavior_id])
-
             temp_changes = self.dev_changes[ctr]
-            #temp_stable = self.dev_stable[ctr]
             idx1 = np.where(temp_changes>0)[0]
 
             # plot a thick line over idx
@@ -537,19 +595,21 @@ class GerbilPCA():
                         #label='developmental stages'
                         )
 
+            #
             ctr+=1
 
-        labels = np.arange(16,30,1  )
+        #
+        labels = np.arange(16,30,1)
         plt.xticks(np.arange(14),labels)
 
         plt.xlabel("dev PDay")
         plt.ylabel("kl divergence in sequential windows")
 
-
+        #
         plt.legend()
                 
         #
-        plt.suptitle("Automatic detection of developmental stages")
+        plt.suptitle("")
 
         #
         plt.show()
