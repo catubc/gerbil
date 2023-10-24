@@ -1210,8 +1210,9 @@ class CohortProcessor():
 
         self.res = res
 
-    #
-    def format_behavior(self):
+        
+         #
+    def format_behavior_rectangle(self):
 
         # so here we match some behavior with each recording based on time day etc.
         self.data = []
@@ -1220,8 +1221,14 @@ class CohortProcessor():
             PDay = self.PDays[k]
             time = self.Start_times[k]
             #print ("time: :", time)
-            temp_temp = [int(PDay[1:]), time.hour, self.res[k]]
-            #print ("temp_temp: ", temp_temp)
+            try:
+                temp = self.res[k][self.animal_id]
+                n_times = np.sum(temp)
+            except:
+                print (self.res[k].shape)
+                n_times = 0
+            temp_temp = [int(PDay[1:]), time.hour, n_times]
+            #print ("self.res: ", self.res[k].shape)
             self.data.append(temp_temp)
 
         #
@@ -1240,6 +1247,48 @@ class CohortProcessor():
             else:
                 s.append(self.data[k,2])
                 temp = self.data[k]      # grab the day and hour information
+                #print ("s: ", s)
+                temp[2] = np.nanmean(s)   # replace the result with some aveage version
+                self.data_ave.append(temp)
+
+                #
+               # print ("chaging hour, s ", s, " and temp: ", temp)
+                
+                # start a new list for the hour
+                s=[]
+
+        self.data = np.vstack(self.data_ave)
+    #
+    def format_behavior(self):
+
+        # so here we match some behavior with each recording based on time day etc.
+        self.data = []
+        for k in range(self.PDays.shape[0]):
+
+            PDay = self.PDays[k]
+            time = self.Start_times[k]
+            #print ("time: :", time)
+            temp_temp = [int(PDay[1:]), time.hour, self.res[k]]
+            #print ("self.res: ", self.res[k].shape)
+            self.data.append(temp_temp)
+
+        #
+        self.data = np.vstack(self.data)
+        #print (self.data)
+
+        # compute average per hour
+        self.data_ave = []
+        s = []
+        #s.append(self.data[0,2])
+        for k in range(0,self.data.shape[0]-1,1):
+            # if two recordings arein the same hour we keep stacking the data in some list s
+            if self.data[k,1]==self.data[k+1,1]:   # if it's the same hour then add the behavior to the list for that hour
+                s.append(self.data[k,2])
+            # if time changes, we compute the average inthe list; 
+            else:
+                s.append(self.data[k,2])
+                temp = self.data[k]      # grab the day and hour information
+                print ("s: ", s)
                 temp[2] = np.nanmean(s)   # replace the result with some aveage version
                 self.data_ave.append(temp)
 
@@ -2097,9 +2146,7 @@ class CohortProcessor():
             temp = img_flattened[k:k+img_width]
             #print (ctr, int(ctr*6), int((ctr+1)*6), k, k+img_width)
             img[:,int(ctr*6)+ctr:int((ctr+1)*6)+ctr] = temp
-            
-            
-            
+                       
             ctr+=1
 
         #

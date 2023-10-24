@@ -1264,6 +1264,77 @@ def make_random_data(n_days,
     
     return data
 
+
+def generate_ethogram_hourly_rectangle(
+                             behavior_name,
+                             cohort,
+                             exclude_huddles):
+    #
+    n_partitions=24
+
+    fname_out = os.path.join(cohort.root_dir,
+                             behavior_name+"_"+str(cohort.animal_id) +"_excludehuddles_"
+                             +str(exclude_huddles)+ '.npy')
+
+    if os.path.exists(fname_out) and cohort.recompute==False:
+        return None
+
+    #
+    data = cohort.data.copy()
+    #print ("cohort data: ", cohort.data.shape)
+    day = data[0][0]
+    start_day = day.copy()
+    #print ("start day: ", day)
+
+    #
+    time = data[0][1]
+    #print ("start time: ", time)
+    
+    #
+    temp = np.zeros(n_partitions)
+    
+    #
+    img=[]
+    while data.shape[0]>0:
+        
+        # grab the time
+        time = data[0][1]
+        
+        # grab the next value
+        temp[int(time)]=data[0][2]
+        #print ("day: ", day, "time: ", time, " value: ", data[0,2])
+    
+        # pop the stack
+        data = np.delete(data,0,axis=0)
+        
+        #
+        if data.shape[0]==0:
+            img.append(temp)
+            break
+    
+        # check to see if day changed
+        if data[0,0] != day:
+            
+            # apend the day to the image stack
+            img.append(temp)
+
+            # reset day number
+            day = data[0][0]
+            
+            # reset partition number
+            time = data[0][1]
+            
+            # reset the 
+            temp = temp*0
+            
+    img = np.array(img)#[::-1]
+
+    #
+    np.save(fname_out, img)
+    
+    return img
+
+
 #
 def generate_ethogram_hourly(
                              behavior_name,
@@ -1273,7 +1344,7 @@ def generate_ethogram_hourly(
     n_partitions=24
 
     fname_out = os.path.join(cohort.root_dir,
-                             behavior_name+"_"+str(cohort.animal_ids) +"_excludehuddles_"
+                             behavior_name+"_"+str(cohort.animal_id) +"_excludehuddles_"
                              +str(exclude_huddles)+ '.npy')
 
     if os.path.exists(fname_out) and cohort.recompute==False:
@@ -1331,6 +1402,8 @@ def generate_ethogram_hourly(
 
     #
     np.save(fname_out, img)
+    
+    return img
 
 #
 def plot_ethogram_development(
