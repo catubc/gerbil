@@ -158,26 +158,16 @@ class GerbilPCA():
         # 
         labels = np.arange(16,30,1)
 
-        if self.show_plots:
-            plt.figure()
-        
         #
         dev_changes = np.zeros((len(self.behaviors),14))
         dev_stable = np.zeros((len(self.behaviors),14))
+
+        #
         for k in trange(len(self.behaviors)):
 
             #
             self.behavior_id = k
             t1_m = self.get_sliding_window_dists()
-            t = np.arange(t1_m.shape[0])
-
-            # plot average of the behavior also
-            mean = np.mean(self.data[self.behavior_id],0)
-            std = np.std(self.data[self.behavior_id],0)
-
-            #
-            #print (self.behaviors[self.behavior_id])
-           # print ("t1_m: ", t1_m)
 
             #
             idx1 = np.where(t1_m<=self.pval_thresh)[0]
@@ -194,41 +184,7 @@ class GerbilPCA():
             dev_changes[k,idx1] = 1
             dev_stable[k,idx2] = 1
 
-            #
-            if self.show_plots and k<4:
-
-                plt.subplot(2,2,k+1)
-                plt.plot(mean, c='black',label='beahvior')
-                plt.fill_between(np.arange(len(mean)), mean-std, mean+std, alpha=.2)
-                plt.title(self.behaviors[self.behavior_id])
-
-                # plot t1_m and make it bold where it is larger thatn 0.05
-                plt.plot(t,t1_m, label = 't_test - pvalue')
-    
-
-                # plot a thick line over idx
-                plt.scatter(t[idx1], mean[idx1], linewidth=5, 
-                            c='red',
-                            label='developmental stages')
-
-
-                # plot a thick line over idx
-                plt.scatter(t[idx2], mean[idx2], linewidth=5, 
-                            c='blue',
-                            label='stabilizing stages')
-
-                plt.xticks(np.arange(14),labels)
-
-                plt.xlabel("dev PDay")
-                plt.ylabel("kl divergence in sequential windows")
-
-                plt.legend()
-        #
-        plt.suptitle("Automatic detection of developmental stages")
-
-        #
-        plt.show()
-
+        #         
         self.dev_changes = dev_changes
         self.dev_stable = dev_stable
 
@@ -539,24 +495,73 @@ class GerbilPCA():
     def plot_mean_behavior(self):
         # plot the time series first
 
+
         plt.figure(figsize=(10,10))
         ctr=0
         for s in self.stack:
             mean = np.mean(s,axis=0)
             std = np.std(s,axis=0)
 
-            plt.plot(mean, 
+            #
+            t = np.arange(mean.shape[0])
+
+            #
+            plt.plot(t,mean, 
                     label=self.behaviors[ctr],
                     c=self.clrs[ctr],
                     linewidth=5)
-
+       
             #
+            #plt.plot(mean, c='black',label='beahvior')
+            plt.fill_between(np.arange(len(mean)), mean-std, mean+std, 
+                             alpha=.2,
+                             color=self.clrs[ctr])
+            #
+            plt.title(self.behaviors[self.behavior_id])
+
+            temp_changes = self.dev_changes[ctr]
+            temp_stable = self.dev_stable[ctr]
+            idx1 = np.where(temp_changes>0)[0]
+            idx2 = np.where(temp_stable>0)[0]
+            # plot a thick line over idx
+            plt.scatter(t[idx1], mean[idx1], 
+                        #linewidth=5, 
+                        c=self.clrs[ctr],
+                        marker='^',
+                        s=self.size,
+                        edgecolors='black',
+                        #label='developmental stages'
+                        )
+
+
+            # # plot a thick line over idx
+            # plt.scatter(t[idx2], mean[idx2], 
+            #             linewidth=5, 
+            #             c=self.clrs[ctr],
+            #             marker='o',
+            #             s=self.size,
+
+            #             #label='stabilizing stages'
+            #             )
             ctr+=1
 
-        # plot a horizontal line at y = 1.0
-        # plt.plot([0,13],[1.0,1.0],'--',
-        #         c='black',
-        #         linewidth=4)
+        labels = np.arange(16,30,1  )
+        plt.xticks(np.arange(14),labels)
+
+        plt.xlabel("dev PDay")
+        plt.ylabel("kl divergence in sequential windows")
+
+
+        plt.legend()
+                
+        #
+        plt.suptitle("Automatic detection of developmental stages")
+
+        #
+        plt.show()
+
+
+    
 
         #
         plt.legend(fontsize=20)
