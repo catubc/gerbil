@@ -243,18 +243,64 @@ class GerbilPCA():
 
         # find the first nonzero entry in each row of img
         idxs = []
+        sums = []
+        starts = []
         for k in range(img.shape[0]):
             idx = np.where(img[k,:]>0)[0]
+            sums.append(np.sum(img[k,:]))
             if len(idx)>0:
-                idxs.append(idx[0])
+                starts.append(idx[0])
             else:
-                idxs.append(np.nan)
+                starts.append(np.nan)
 
         # sort idxs 
-        idxs = np.array(idxs)
-        idxs = np.argsort(idxs)
-        img = img[idxs,:]
+        starts = np.array(starts)
+        idx = np.argsort(starts)
+        starts = starts[idx]
 
+        #
+        sums = np.array(sums)
+        sums = sums[idx]
+
+        # bubble sort idxs but only when they have same sum
+        change = True
+        while change==True:
+            change = False
+            for k in range(len(starts)-1):
+                # print ("k: ", k, 
+                #        " starts ", starts[k], 
+                #        "stats k+1: ", starts[k+1],
+                #        ", sums[k]: ", sums[k], 
+                #        " sums[k+1]: ", sums[k+1])
+                #
+                if starts[k]==starts[k+1]:
+                    print ("starts match")
+                    if sums[k]>sums[k+1]:
+                        #print ("sums diff")
+                        temp = starts[k]
+                        starts[k] = starts[k+1]
+                        starts[k+1] = temp
+                        change = True
+
+                        # also change sums
+                        temp = sums[k]
+                        sums[k] = sums[k+1]
+                        sums[k+1] = temp
+
+                        # also change idx array
+                        temp = idx[k]
+                        idx[k] = idx[k+1]
+                        idx[k+1] = temp
+
+                        #
+                        #print ("Moved k")
+       #
+
+        # reorder the img array
+        img = img[idx,:]
+
+
+        ###############
         # conver the image data to be 10 times larger and add empty rows every 10th row
         img2 = np.zeros((img.shape[0]*10, img.shape[1]))
         for k in range(img.shape[0]):
@@ -275,7 +321,7 @@ class GerbilPCA():
         
         # label the y axis using the behavior names
         plt.yticks(np.arange(len(self.behaviors))+0.5, 
-                   np.array(self.behaviors)[idxs][::-1],
+                   np.array(self.behaviors)[idx][::-1],
                    rotation=45,
                    fontsize=8)
 
