@@ -155,9 +155,6 @@ class GerbilPCA():
     #
     def get_dev_plots(self):
 
-
-        #
-
         # 
         labels = np.arange(16,30,1)
 
@@ -170,8 +167,6 @@ class GerbilPCA():
         for k in trange(len(self.behaviors)):
 
             #
-
-            #
             self.behavior_id = k
             t1_m = self.get_sliding_window_dists()
             t = np.arange(t1_m.shape[0])
@@ -181,13 +176,25 @@ class GerbilPCA():
             std = np.std(self.data[self.behavior_id],0)
 
             #
-            idx1 = np.where(t1_m<self.pval_thresh)[0]
-            dev_changes[k,idx1] = 1
+            #print (self.behaviors[self.behavior_id])
+           # print ("t1_m: ", t1_m)
 
             #
-            idx2 = np.where(t1_m>self.pval_thresh)[0]
+            idx1 = np.where(t1_m<=self.pval_thresh)[0]
+            if self.smooth_pval:
+                # write a functoin that replaces isolated idx1 values with 0s
+                temp = np.zeros(t1_m.shape[0])
+                temp[idx1] = 1
+                
+                #
+                temp = replace_isolated_ones_with_zeros(temp)
+                idx1 = np.where(temp==1)[0]
+                idx2 = np.where(temp==0)[0]
+
+            dev_changes[k,idx1] = 1
             dev_stable[k,idx2] = 1
 
+            #
             if self.show_plots and k<4:
 
                 plt.subplot(2,2,k+1)
@@ -232,9 +239,35 @@ class GerbilPCA():
         plt.figure()
 
         #
-        plt.subplot(211)
-        plt.imshow(self.dev_changes, 
+        img = self.dev_changes.copy()
+
+        # find the first nonzero entry in each row of img
+        idxs = []
+        for k in range(img.shape[0]):
+            idx = np.where(img[k,:]>0)[0]
+            if len(idx)>0:
+                idxs.append(idx[0])
+            else:
+                idxs.append(np.nan)
+
+        # sort idxs 
+        idxs = np.array(idxs)
+        idxs = np.argsort(idxs)
+        img = img[idxs,:]
+
+        # conver the image data to be 10 times larger and add empty rows every 10th row
+        img2 = np.zeros((img.shape[0]*10, img.shape[1]))
+        for k in range(img.shape[0]):
+            img2[10*k:10*k+10,:] = img[k,:]
+            img2[10*k]=0.1
+    
+        img = img2.copy()
+        
+        #
+        plt.subplot(111)
+        plt.imshow(img, 
                    aspect='auto',
+                   interpolation='none',
                    # use extent to go from 0 to # of behaviors and then up to 14 days on x axis
                    extent = [0,14,0,len(self.behaviors)],
                    #cmap = 'binary'
@@ -242,7 +275,7 @@ class GerbilPCA():
         
         # label the y axis using the behavior names
         plt.yticks(np.arange(len(self.behaviors))+0.5, 
-                   self.behaviors[::-1],
+                   np.array(self.behaviors)[idxs][::-1],
                    rotation=45,
                    fontsize=8)
 
@@ -256,8 +289,11 @@ class GerbilPCA():
 
         plt.xlabel("dev PDay")
 
-        # 
-        plt.subplot(212)
+    #
+    def plot_summary_devs(self):
+
+        # ##########################################
+        plt.subplot(111)
 
         # show the sum of the dev changes
         sums = np.sum(self.dev_changes,0)
@@ -333,44 +369,63 @@ class GerbilPCA():
         t1_window = np.arange(0,12,1)
         t1_array = np.zeros(14)+np.nan
 
+        # compute distribution for first window manually
+        if self.interpolate_first_value:
+            temp1 = self.data[self.behavior_id][:,0:self.sliding_window_size].copy()
+            temp2 = self.data[self.behavior_id][:,self.sliding_window_size:2*self.sliding_window_size].copy()
+
+            res = self.compute_signficance(temp1, temp2)
+
+            t1_array[1] = res
+
+        # compute dist for rest of distribution
         for t1 in t1_window:
 
             # grab chunk 1 of data
             temp1 = self.data[self.behavior_id][:,t1:t1+self.sliding_window_size].copy()
             temp2 = self.data[self.behavior_id][:,t1+self.sliding_window_size:t1+2*self.sliding_window_size].copy()
 
-            # flatten each chunk 
-            temp1 = temp1.flatten()
-            temp2 = temp2.flatten()
+            res = self.compute_signficance(temp1, temp2)
 
+            t1_array[t1+self.sliding_window_size] = res
 
-            #
-            if self.dist_method == 'kl_div':
-                # Perform kernel density estimation (KDE) 
-                #samples1, samples2 = get_samples_from_kde(temp1, temp2, self.n_samples_kde)
-                kl_divergence1 = entropy(temp1, temp2)
-                t1_array[t1+self.sliding_window_size] = kl_divergence1
-                #
-            elif self.dist_method =='t_test':
-
-                # Perform an independent two-sample t-test
-                t_stat, p_value = stats.ttest_ind(temp1, temp2)
-               # print (t1, t2, p_value)
-
-                # Check the p-value to determine if the means are significantly different
-                t1_array[t1+self.sliding_window_size] = p_value
-            elif self.dist_method == '2sample_ks_test':
-                
-                # Perform a 2 sample ks test using scipy
-                ks_ = ks_2samp(temp1, temp2)
-                t1_array[t1+self.sliding_window_size] = ks_[1]
-
-                
-        
-
+            
         #
         return t1_array
     
+    #
+    def compute_signficance(self, temp1, temp2):
+
+        # flatten each chunk 
+        temp1 = temp1.flatten()
+        temp2 = temp2.flatten()
+
+        #
+        if self.dist_method == 'kl_div':
+            # Perform kernel density estimation (KDE) 
+            #samples1, samples2 = get_samples_from_kde(temp1, temp2, self.n_samples_kde)
+            kl_divergence1 = entropy(temp1, temp2)
+            #t1_array[t1+self.sliding_window_size] = kl_divergence1
+            #
+        
+        elif self.dist_method =='t_test':
+            print ("THIS needs correction ...")
+            # Perform an independent two-sample t-test
+            t_stat, p_value = stats.ttest_ind(temp1, temp2)
+        # print (t1, t2, p_value)
+
+            # Check the p-value to determine if the means are significantly different
+            #t1_array[t1+self.sliding_window_size] = p_value
+        
+        #
+        elif self.dist_method == '2sample_ks_test':
+            
+            # Perform a 2 sample ks test using scipy
+            ks_ = ks_2samp(temp1, temp2)
+            #t1_array[t1+self.sliding_window_size] = ks_[1]
+
+        return ks_[1]
+
     #
     def load_data(self):
 
@@ -1222,3 +1277,23 @@ def get_samples_from_kde(data1,
 
     
     return samples1, samples2
+
+#
+def replace_isolated_ones_with_zeros(temp):
+    
+    # This switches the first value if its followed by a 2+ sequence
+    start_idx = 1
+    if temp[start_idx]!=temp[start_idx+1]:
+        if temp[start_idx+1]==temp[start_idx+2]:
+            temp[start_idx] = temp[start_idx+1]
+
+    # rest of the values
+    for k in range(start_idx+1,temp.shape[0]-1):
+        #
+        if temp[k]==temp[k-1]:
+            continue
+        elif temp[k]!=temp[k+1]:
+            temp[k] = temp[k+1]
+
+    # 
+    return temp
