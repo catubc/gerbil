@@ -502,6 +502,9 @@ class GerbilPCA():
             mean = np.mean(s,axis=0)
             std = np.std(s,axis=0)
 
+            # get standard error
+            sem = std/np.sqrt(s.shape[0])
+
             #
             t = np.arange(mean.shape[0])
 
@@ -509,20 +512,21 @@ class GerbilPCA():
             plt.plot(t,mean, 
                     label=self.behaviors[ctr],
                     c=self.clrs[ctr],
-                    linewidth=5)
+                    linewidth=5,
+                    alpha=.9)
        
             #
             #plt.plot(mean, c='black',label='beahvior')
-            plt.fill_between(np.arange(len(mean)), mean-std, mean+std, 
+            plt.fill_between(np.arange(len(mean)), mean-sem, mean+sem, 
                              alpha=.2,
                              color=self.clrs[ctr])
             #
             plt.title(self.behaviors[self.behavior_id])
 
             temp_changes = self.dev_changes[ctr]
-            temp_stable = self.dev_stable[ctr]
+            #temp_stable = self.dev_stable[ctr]
             idx1 = np.where(temp_changes>0)[0]
-            idx2 = np.where(temp_stable>0)[0]
+
             # plot a thick line over idx
             plt.scatter(t[idx1], mean[idx1], 
                         #linewidth=5, 
@@ -533,16 +537,6 @@ class GerbilPCA():
                         #label='developmental stages'
                         )
 
-
-            # # plot a thick line over idx
-            # plt.scatter(t[idx2], mean[idx2], 
-            #             linewidth=5, 
-            #             c=self.clrs[ctr],
-            #             marker='o',
-            #             s=self.size,
-
-            #             #label='stabilizing stages'
-            #             )
             ctr+=1
 
         labels = np.arange(16,30,1  )
