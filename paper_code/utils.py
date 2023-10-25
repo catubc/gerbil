@@ -494,10 +494,10 @@ class GerbilPCA():
 
             #'food',
             #'water',
-            'pup_male_food',
-            'pup_male_water',
-            'pup_female_food',
-            'pup_female_water',
+            #'pup_male_food',
+            #'pup_male_water',
+            #'pup_female_food',
+            #'pup_female_water',
         ]
 
        #
