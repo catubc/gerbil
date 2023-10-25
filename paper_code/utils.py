@@ -153,7 +153,7 @@ class GerbilPCA():
         return t1_matrix, t2_matrix
 
     #
-    def get_dev_plots(self):
+    def get_rapid_dev_plots(self):
 
         #
         dev_changes = np.zeros((len(self.behaviors),14))
@@ -170,8 +170,10 @@ class GerbilPCA():
 
             #
             idx1 = np.where(t1_m<=self.pval_thresh)[0]
+
+            #
             if self.smooth_pval:
-                # write a functoin that replaces isolated idx1 values with 0s
+                # 
                 temp = np.zeros(t1_m.shape[0])
                 temp[idx1] = 1
                 
@@ -281,14 +283,10 @@ class GerbilPCA():
         while change==True:
             change = False
             for k in range(len(starts)-1):
-                # print ("k: ", k, 
-                #        " starts ", starts[k], 
-                #        "stats k+1: ", starts[k+1],
-                #        ", sums[k]: ", sums[k], 
-                #        " sums[k+1]: ", sums[k+1])
+
                 #
                 if starts[k]==starts[k+1]:
-                    print ("starts match")
+                    #print ("starts match")
                     if sums[k]>sums[k+1]:
                         #print ("sums diff")
                         temp = starts[k]
@@ -426,7 +424,7 @@ class GerbilPCA():
         import numpy as np
 
         #
-        t1_window = np.arange(0,12,1)
+        t1_window = np.arange(0,14-self.sliding_window_size,1)
         t1_array = np.zeros(14)+np.nan
 
         # compute distribution for first window manually
@@ -448,6 +446,8 @@ class GerbilPCA():
             res = self.compute_signficance(temp1, temp2)
 
             t1_array[t1+self.sliding_window_size] = res
+            #t1_array[t1+self.sliding_window_size-1:
+            #         t1+self.sliding_window_size+1] = res
 
             
         #
@@ -492,8 +492,8 @@ class GerbilPCA():
         #
         flip_behaviors = [
 
-            'food',
-            'water',
+            #'food',
+            #'water',
             'pup_male_food',
             'pup_male_water',
             'pup_female_food',
