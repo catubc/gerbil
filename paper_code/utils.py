@@ -20,6 +20,7 @@ import statsmodels.api as sm
 from scipy import stats
 from tqdm import tqdm, trange
 from scipy.stats import ks_2samp
+from scipy.spatial import distance
 
 
 # load data
@@ -157,7 +158,7 @@ class GerbilPCA():
 
         #
         dev_changes = np.zeros((len(self.behaviors),14))
-        dev_stable = np.zeros((len(self.behaviors),14))
+       # dev_stable = np.zeros((len(self.behaviors),14))
 
         #
         for k in trange(len(self.behaviors)):
@@ -178,16 +179,17 @@ class GerbilPCA():
                 temp[idx1] = 1
                 
                 #
-                temp = replace_isolated_ones_with_zeros(temp)
+               # print ("temp: ", temp)
+                temp = replace_isolated_ones_with_zeros(temp, self.sliding_window_size)
                 idx1 = np.where(temp==1)[0]
-                idx2 = np.where(temp==0)[0]
-
+                #idx2 = np.where(temp==0)[0]
+               # print ("temp: ", temp)
             dev_changes[k,idx1] = 1
-            dev_stable[k,idx2] = 1
+            #dev_stable[k,idx2] = 1
 
         #         
         self.dev_changes = dev_changes
-        self.dev_stable = dev_stable
+        #self.dev_stable = dev_stable
 
     #
     def get_area_under_curve(self):
@@ -416,15 +418,13 @@ class GerbilPCA():
 
         plt.show()
 
-
-
     #
     def get_sliding_window_dists(self):
 
         import numpy as np
 
         #
-        t1_window = np.arange(0,14-self.sliding_window_size,1)
+        t1_window = np.arange(0,14-self.sliding_window_size-1,1)
         t1_array = np.zeros(14)+np.nan
 
         # compute distribution for first window manually
@@ -433,7 +433,7 @@ class GerbilPCA():
             temp2 = self.data[self.behavior_id][:,self.sliding_window_size:2*self.sliding_window_size].copy()
             res = self.compute_signficance(temp1, temp2)
 
-            t1_array[1] = res
+            t1_array[self.sliding_window_size] = res
 
         # compute dist for rest of distribution
         for t1 in t1_window:
@@ -449,6 +449,8 @@ class GerbilPCA():
             #t1_array[t1+self.sliding_window_size-1:
             #         t1+self.sliding_window_size+1] = res
 
+            # 
+            #print (t1, t1+self.sliding_window_size, res)
             
         #
         return t1_array
@@ -485,6 +487,479 @@ class GerbilPCA():
             #t1_array[t1+self.sliding_window_size] = ks_[1]
 
         return ks_[1]
+
+    #
+    def process_data_circadian(self):
+
+
+
+        #
+        for behavior in self.behaviors:
+
+            #
+            adults = []
+            pups = []
+            pups_adults = []
+    
+            # 
+            for c in range(2,5):
+            
+                #
+                sub_dir = os.path.join(self.root_dir,
+                                       'c' + str(c) + 
+                                       "_ethogram_hourly_"+
+                                       behavior)
+                
+                # for pairwise proximity we have many curves
+                if 'pairwise' in behavior:
+                    for a1 in range(6):
+                        for a2 in range(6):
+                            if a1==a2:
+                                continue
+
+                            #
+                            fname = os.path.join(sub_dir,
+                                                'ethogram_hourly_'+
+                                                behavior + "_"+str(a1)+"_"+str(a2)
+                                                +'.npy'
+                                                )
+                                            
+                            #
+                            d = np.load(fname)
+                            
+                            # remove first and last rows
+                            d = d[1:-1,:]
+
+                            #
+                            if a1<2 and a2<2:
+                                adults.append(d)
+
+                            # this is pup-adult times
+                            elif (a1<2 or a2<2) and (a1>2 or a2>2):
+                                pups_adults.append(d)
+                            #
+                            else:
+                                pups.append(d)
+                #
+                else:
+                    for a1 in range(6):
+                        fname = os.path.join(sub_dir,
+                                            'ethogram_hourly_'+
+                                            behavior + "_"+str(a1)
+                                            +'.npy'
+                                            )
+                        #
+                        d = np.load(fname)
+                        
+                        # remove first and last rows
+                        d = d[1:-1,:]
+                    
+                        if a1<2:
+                            adults.append(d)
+                        else:
+                            pups.append(d)
+
+            #
+            fname_out = os.path.join(self.root_dir,
+                                     behavior + '_adults.npy')
+            np.save(fname_out, np.array(adults))
+
+            #
+            fname_out = os.path.join(self.root_dir,
+                                        behavior + '_pups.npy')
+            np.save(fname_out, np.array(pups))
+
+            #
+            fname_out = os.path.join(self.root_dir,
+                                        behavior + '_pups_adults.npy')
+            np.save(fname_out, np.array(pups_adults))
+
+
+    # Assuming you have three distributions A, B, and C as arrays
+    def bhattacharyya_distance(self, p, q):
+        mean_p = np.mean(p)
+        mean_q = np.mean(q)
+        var_p = np.var(p)
+        var_q = np.var(q)
+
+        if var_p == 0 and var_q == 0:
+            return 0.0
+
+        return 0.25 * np.log(0.25 * (var_p / var_q + var_q / var_p + 2.0)) + 0.25 * ((mean_p - mean_q) ** 2) / (var_p + var_q)
+
+    #
+    def compute_bhattacharyya_distance(self):
+
+  #
+        cl = self.selected_class
+
+        t = np.arange(24)+0.5
+        self.clusters = []
+        for behavior in self.behaviors:
+            #        
+            cl_array = []
+           
+            # print ("self periods: ", self.periods)
+            
+            #
+            if cl == 'pups_adults' and behavior != 'pairwise_proximity':
+                continue
+
+            #
+            fname = os.path.join(self.root_dir, behavior + '_'+cl+'.npy')
+
+            #
+            data = np.load(fname)
+
+            #
+            d = np.mean(data, axis=0)
+
+            # split d by row using self.period list of 3 tupples
+            d_split = []
+            for p in self.periods:
+
+                # subtract 16 from p
+                p = (p[0]-16, p[1]-16)
+
+                #
+                temp = d[p[0]:p[1]]
+                #  print ("p: , temp.shape: ", p, temp.shape)
+
+                #
+                d_split.append(temp)
+
+                #
+                cl_array.append(data[:,p[0]:p[1]])
+
+            #################################################
+            # make the PCA array
+            temp = []
+            idxs = []
+            start = 0
+            for q in range(len(cl_array)):
+                temp2 = np.mean(cl_array[q],axis=1)
+                # print ("temp2: ", temp2.shape)
+                temp.append(temp2)
+
+                #
+                idxs.append([start, start+temp2.shape[0]])
+                start+= temp2.shape[0]
+
+            #
+            temp = np.vstack(temp)
+
+            # Create a PCA instance with 2 components
+            pca = PCA(n_components=3)
+
+            # Fit the PCA model and transform the data
+            pca.fit(temp)
+
+            # transform the data
+            data_pca = pca.transform(temp)
+
+            #################################################################
+            #################################################################
+            #################################################################
+         
+            # loop over the developmental periods using hte idxs from above
+            for idx in idxs:
+                #
+                temp = data_pca[idx[0]:idx[1]]
+
+                
+                if cl == self.selected_class:
+                    self.clusters.append(temp)
+
+                            
+        #
+        A,B,C = self.clusters
+
+        # # Assuming you have three distributions A, B, and C as arrays
+        distance_AB = self.bhattacharyya_distance(A, B)
+        distance_AC = self.bhattacharyya_distance(A, C)
+        distance_BC = self.bhattacharyya_distance(B, C)
+
+        # # Calculate an overall distance (e.g., average)
+        overall_distance = (distance_AB + distance_AC + distance_BC) / 3
+       # print ("ave bhatta: ", overall_distance)
+
+        return overall_distance
+
+    #
+    def circadian_plots(self):
+        
+        #
+        classes = [
+            'adults',
+            'pups',
+            'pups_adults'
+        ]
+
+        # make 3 colors that increase in intensity
+        clrs = ['lightblue','blue','navy']
+
+
+        #
+        t = np.arange(24)+0.5
+        self.clusters = []
+        for behavior in self.behaviors:
+            print ("")
+            print ("Starting behavior: ", behavior)
+
+            #
+            for cl in classes:
+                cl_array = []
+                print ("")
+                print ("starting: class: ",cl)
+               
+                # print ("self periods: ", self.periods)
+                
+                #
+                if cl == 'pups_adults' and behavior != 'pairwise_proximity':
+                    continue
+
+                #
+                fname = os.path.join(self.root_dir, behavior + '_'+cl+'.npy')
+
+                #
+                data = np.load(fname)
+                print ("data.shape: ", data.shape)
+
+                #
+                d = np.mean(data, axis=0)
+
+                # split d by row using self.period list of 3 tupples
+                d_split = []
+                for p in self.periods:
+                    #tempp = p
+
+                    # subtract 16 from p
+                    p = (p[0]-16, p[1]-16)
+
+                    #
+                    temp = d[p[0]:p[1]]
+                  #  print ("p: , temp.shape: ", p, temp.shape)
+
+                    #
+                    d_split.append(temp)
+
+                    #
+                    cl_array.append(data[:,p[0]:p[1]])
+
+                #
+                d_split = np.array(d_split)
+                #print (d_split.shape)
+
+                # plot each of the 3 periods
+                plt.figure()
+                for k in range(3):
+                    mean = np.mean(d_split[k], axis=0)
+                    plt.plot(t,mean,
+                             label = str(self.periods[k]),
+                             c=clrs[k],
+                             linewidth = 5,
+                            )
+        
+                    # plot sem standard error 
+                    sem = np.std(d_split[k], axis=0)/np.sqrt(d_split[k].shape[0])
+                    plt.fill_between(t, mean-sem, mean+sem,
+                                        alpha=.2,
+                                        color=clrs[k])
+                    
+                              
+                plt.title(behavior + ' ' + cl)
+                
+                # add background shading between 0 annd 8 and between 20 and 24
+                plt.axvspan(0, 8, facecolor='gray', alpha=0.2)
+                plt.axvspan(20, 24, facecolor='gray', alpha=0.2)
+                plt.legend()
+                #
+                plt.xlim(0,24)
+                
+                # 
+                print (self.dev_windows)
+                plt.suptitle("Dev splits t1: "+str(self.dev_windows[0])+
+                             " , t2: "+str(self.dev_windows[1])
+                             +"\n"
+                             + "stage 1: 16-"+str(self.dev_windows[0])
+                             + ", stage 2: "+str(self.dev_windows[0])+"-"+str(self.dev_windows[1])
+                             + ", stage 3: "+str(self.dev_windows[1])+"-30"
+                            )
+
+
+                #
+                plt.show()
+
+                #################################################
+                #################################################
+                #################################################
+                # make the PCA array
+                temp = []
+                idxs = []
+                start = 0
+                #print ("# cl_array: ", len(cl_array))
+                for q in range(len(cl_array)):
+                    temp2 = np.mean(cl_array[q],axis=1)
+                   # print ("temp2: ", temp2.shape)
+                    temp.append(temp2)
+
+                    #
+                    idxs.append([start, start+temp2.shape[0]])
+                    start+= temp2.shape[0]
+
+                #
+                temp = np.vstack(temp)
+               # print ("stacked cl array: ", temp.shape)
+
+                # Create a PCA instance with 2 components
+                pca = PCA(n_components=3)
+
+                # Fit the PCA model and transform the data
+                pca.fit(temp)
+
+                # transform the data
+                data_pca = pca.transform(temp)
+
+                #################################################################
+                #################################################################
+                #################################################################
+                # 
+                if self.plot_3d==False:
+                    plt.figure()
+                    ctr=0
+                    for idx in idxs:
+    
+                        #
+                        temp = data_pca[idx[0]:idx[1]]
+    
+                        #
+                        plt.scatter(temp[:,0], 
+                                temp[:,1],
+                                c=clrs[ctr],
+                                s=100,
+                                label = str(self.periods[ctr]))
+                        
+                        #
+                        ctr+=1
+                    
+                # same plot for for 3d 
+                else:
+                    fig = plt.figure()
+                    ax = fig.add_subplot(111, projection='3d')
+
+                    # use 3 types of markers every 1/3 the length of cl_array.shape[0]
+                    markers = ['o','^','s']
+     
+                    # loop over the developmental periods using hte idxs from above
+                    ctr=0
+                    for idx in idxs:
+                        #
+                        temp = data_pca[idx[0]:idx[1]]
+
+                        #
+                        chunk = temp.shape[0]//3
+                        for m in range(0, temp.shape[0], chunk):
+
+                            #
+                            if m==0:
+                                ax.scatter(temp[m:m+chunk,0], 
+                                    temp[m:m+chunk,1],
+                                    temp[m:m+chunk,2],
+                                    c=clrs[ctr],
+                                    marker = markers[m//3],
+                                    s=400,
+                                    edgecolors='black',
+                                    label = str(self.periods[ctr]) +
+                                            "c1: o, c2: tri, c3: sq",
+                                    alpha=1)
+                            else:
+                                ax.scatter(temp[m:m+chunk,0], 
+                                    temp[m:m+chunk,1],
+                                    temp[m:m+chunk,2],
+                                    c=clrs[ctr],
+                                    marker = markers[m//chunk],
+                                    s=400,
+                                    edgecolors='black',
+                                    #label = str(self.periods[ctr]),
+                                    alpha=1)
+
+                        ##################################################
+                        ##################################################
+                        ##################################################
+
+
+                        # repeat the last entry in temp and try again
+                        #temp = np.vstack((temp,temp[-1]*1.01))
+                        hull = ConvexHull(temp)
+
+                        if cl == 'pups':
+                            self.clusters.append(temp)
+
+                        #
+                        for simplex in hull.simplices:
+                            plt.plot(
+                                temp[:,0][simplex], 
+                                temp[:,1][simplex], 
+                                temp[:,2][simplex], 
+
+                                    color=clrs[ctr],
+                                    linewidth=5,
+                                    alpha=.5)
+                            
+                        # Step 2: Compute the convex hull
+                        hull = ConvexHull(temp)
+                        vertices = temp[hull.vertices]  # Vertices of the convex hull
+
+                        # get the ids of the vertices
+                        # make a larger vertices array and fill in the missing vertices with zeros
+                        vertices = np.zeros((temp.shape[0],3))
+                        vertices[hull.vertices] = temp[hull.vertices]
+                        #
+
+                        # Step 3: Extract the valid edges and vertices from the convex hull
+                        edges = []
+                        for simplex in hull.simplices:
+                            n_bad = 0
+                            for v in simplex:
+                                #print (v)
+                                if v < 0 or v >= len(temp):
+                                    n_bad += 1
+
+                            if n_bad == 0:
+                                edges.append(simplex)
+
+                        # Step 5: Create a Poly3DCollection for the 3D polygon
+                        poly3d = [[vertices[edge[0]], vertices[edge[1]], vertices[edge[2]]] for edge in edges]
+
+                        ax.add_collection3d(Poly3DCollection(poly3d, 
+                                                            facecolors=clrs[ctr], 
+                                                            linewidths=1, 
+                                                            edgecolors=clrs[ctr], 
+                                                            alpha=0.5))
+                    
+                        ctr+=1  
+
+
+                
+                #
+                plt.xlabel("PC1")
+                plt.ylabel("PC2")
+
+                #
+                plt.title(behavior + ' ' + cl)
+                plt.legend()
+                plt.show()
+            
+
+            
+  
+
+        # plt.figure()
+        # plt.imshow(d)
+
+        # plt.show()
+
+
 
     #
     def load_data(self):
@@ -1384,16 +1859,19 @@ def get_samples_from_kde(data1,
     return samples1, samples2
 
 #
-def replace_isolated_ones_with_zeros(temp):
+def replace_isolated_ones_with_zeros(temp,window_size):
     
     # This switches the first value if its followed by a 2+ sequence
-    start_idx = 1
-    if temp[start_idx]!=temp[start_idx+1]:
-        if temp[start_idx+1]==temp[start_idx+2]:
-            temp[start_idx] = temp[start_idx+1]
+    if False:
+        start_idx = 1
+        if temp[start_idx]!=temp[start_idx+1]:
+            if temp[start_idx+1]==temp[start_idx+2]:
+                temp[start_idx] = temp[start_idx+1]
+    else:
+        start_idx = window_size
 
     # rest of the values
-    for k in range(start_idx+1,temp.shape[0]-1):
+    for k in range(start_idx,temp.shape[0]-1):
         #
         if temp[k]==temp[k-1]:
             continue
