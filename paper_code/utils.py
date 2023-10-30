@@ -685,6 +685,109 @@ class GerbilPCA():
 
         return overall_distance
 
+
+    def get_circadian_total_behavior_sums(self):
+        #
+        classes = [
+            'adults',
+            'pups',
+            'pups_adults'
+        ]
+
+        #
+        idx_day = np.zeros(24,'int32')
+        idx_day[8:20] = 1
+        idx_night = np.mod(idx_day+1,2)
+        idx_day = np.where(idx_day==1)[0]
+        idx_night = np.where(idx_night==1)[0]
+
+        print (idx_day)
+        print (idx_night)
+
+        #
+        plt.figure()
+        t = np.arange(24)+0.5
+        for behavior in self.behaviors:
+            print ('')
+            print ('')
+            print ("Starting behavior: ", behavior)
+
+            #
+            for cl in classes:
+                print ('')
+                print ("starting: class: ",cl)
+                
+                #
+                if cl == 'pups_adults' and behavior != 'pairwise_proximity':
+                    continue
+
+                #
+                fname = os.path.join(self.root_dir, behavior + '_'+cl+'.npy')
+
+                #
+                data = np.load(fname)
+                print ("data.shape: ", data.shape)
+
+                # average overa all animals
+                d = np.mean(data, axis=0)
+                print ("d.shape: ", d.shape)
+               
+                # average over all days
+                plt.plot(t,
+                        np.mean(d,axis=0),
+                        label=behavior+'_'+cl)
+                        
+                #
+                dur_daytime = d[:,idx_day].sum()
+                dur_daytime_std = np.std(d[:,idx_day].sum(axis=1))
+                dur_nighttime = d[:,idx_night].sum()
+                dur_nighttime_std = np.std(d[:,idx_night].sum(axis=1))
+
+                #
+                print ("dur_daytime: ", dur_daytime)
+                print ("dur_nighttime: ", dur_nighttime)
+
+                # show ratios also
+                print ("light ratio: ", np.round(dur_daytime/(dur_nighttime+dur_daytime)*100,2),
+                        " , std: ", np.round(dur_daytime_std/(dur_nighttime+dur_daytime)*100,2))
+                print ("dark ratio: ", np.round(dur_nighttime/(dur_nighttime+dur_daytime)*100,2),
+                        " , std: ", np.round(dur_nighttime_std/(dur_nighttime+dur_daytime)*100,2))
+
+
+        #
+        plt.legend()
+        plt.show()
+
+    def optimize_t1_t2(self):
+
+        #
+        res_matrix = np.zeros((30,30))
+        for t1 in range(17,26):
+            for t2 in range(t1+1,29):
+                self.periods = [
+                    [16, t1],
+                    [t1, t2],
+                    [t2, 30],
+                ]
+                res = self.compute_bhattacharyya_distance()
+                res_matrix[t1,t2]=res
+
+        #
+        plt.figure()
+        plt.imshow(res_matrix, cmap='viridis', 
+                interpolation='none')
+        plt.colorbar()
+        plt.ylim(16,30)
+        plt.xlim(16,30)
+        plt.xlabel('t2')
+        plt.ylabel('t1')
+        plt.suptitle("Bhattacharyya distances optimizing for # "+
+                    str(len(self.periods))+  " circadian stages, \nbased on behavior: "+str(self.behaviors[0])+
+                    "\nDEV Epochs: P16 -> t1 -> t2 -> P30",
+                    fontsize=10)
+        #
+        plt.show()
+                
     #
     def circadian_plots(self):
         
@@ -1880,3 +1983,59 @@ def replace_isolated_ones_with_zeros(temp,window_size):
 
     # 
     return temp
+
+     #
+def generate_hourly_ethogram2(filename_in,
+                              animal_id):
+
+    #
+    rectangle_ethogram = np.load(filename_in)
+    print ("rectangle_ethogram: ", rectangle_ethogram.shape)
+
+    #
+    fname_out = os.path.join(os.path.split(filename_in)[0],
+                            'hourly_ethogram_'+str(animal_id)+'.npy')
+    
+    #
+    hourly_ethogram = np.zeros((16,24))
+    
+        #
+    #print ("ethogram seconds: ", self.rectangle_ethogram.shape)
+    
+    # loop over each day per animals
+    # make animal id based indexes into the array
+    # use this if we have added empty rows
+    if rectangle_ethogram.shape[0]>100:
+        idxs = np.arange(1,rectangle_ethogram.shape[0],7)+(5-animal_id)
+    else:
+        idxs = np.arange(0,rectangle_ethogram.shape[0],6)+(5-animal_id)
+    
+    idxs = idxs[::-1]
+    #print (idxs)
+
+    ctr=0
+    for idx in idxs:
+        
+        # print ("idx, temp.shpae: ", idx)
+        temp = rectangle_ethogram[idx]
+        # convert to boolean vals
+        idx = np.where(temp>0)[0]
+        temp[idx]=1                
+
+        # split the data into 24 chunks
+        day_total = 0
+        for t in range(0,temp.shape[0],3600):
+            temp_temp = temp[t:t+3600]
+            #print ("idx, t, temp_temp, ctr: ", idx, t, temp_temp.shape, ctr)
+            hourly_ethogram[ctr,t//3600] = np.nansum(temp_temp)
+            
+            #
+            day_total += np.nansum(temp_temp)
+            
+        #
+        #print ("anima: ", self.animal_id, " day: ", ctr, " daily total:", day_total)
+        ctr+=1
+        
+    #
+    np.save(fname_out,
+            hourly_ethogram)
