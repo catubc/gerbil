@@ -819,7 +819,9 @@ class GerbilPCA():
 
         #
         plt.figure()
-        plt.imshow(res_matrix, cmap='viridis', 
+        plt.imshow(res_matrix, 
+                   cmap='jet', 
+                   
                 interpolation='none')
         plt.colorbar()
         plt.ylim(16,30)
@@ -886,7 +888,7 @@ class GerbilPCA():
 
                     #
                     temp = d[p[0]:p[1]]
-                  #  print ("p: , temp.shape: ", p, temp.shape)
+                    print ("p: , temp.shape: ", p, temp.shape)
 
                     #
                     d_split.append(temp)
@@ -895,9 +897,12 @@ class GerbilPCA():
                     cl_array.append(data[:,p[0]:p[1]])
 
                 #
-                d_split = np.array(d_split)
+                #d_split = np.array(d_split)
                 #print (d_split.shape)
 
+                ##########################################
+                ##########################################
+                ##########################################
                 # plot each of the 3 periods
                 plt.figure()
                 for k in range(3):
@@ -914,7 +919,7 @@ class GerbilPCA():
                                         alpha=.2,
                                         color=clrs[k])
                     
-                              
+                #          
                 plt.title(behavior + ' ' + cl)
                 
                 # add background shading between 0 annd 8 and between 20 and 24
@@ -925,7 +930,6 @@ class GerbilPCA():
                 plt.xlim(0,24)
                 
                 # 
-                print (self.dev_windows)
                 plt.suptitle("Dev splits t1: "+str(self.dev_windows[0])+
                              " , t2: "+str(self.dev_windows[1])
                              +"\n"
@@ -933,7 +937,6 @@ class GerbilPCA():
                              + ", stage 2: "+str(self.dev_windows[0])+"-"+str(self.dev_windows[1])
                              + ", stage 3: "+str(self.dev_windows[1])+"-30"
                             )
-
 
                 #
                 plt.show()
@@ -956,8 +959,11 @@ class GerbilPCA():
                     start+= temp2.shape[0]
 
                 #
+                print ("idxs: ", idxs)
+                
+                #
                 temp = np.vstack(temp)
-               # print ("stacked cl array: ", temp.shape)
+                print ("stacked cl array: ", temp.shape)
 
                 # Create a PCA instance with 2 components
                 pca = PCA(n_components=3)
@@ -968,6 +974,9 @@ class GerbilPCA():
                 # transform the data
                 data_pca = pca.transform(temp)
 
+                # print variance explained in 3 components
+                print ("variance explained for 3pcs: ", np.sum(pca.explained_variance_ratio_))
+
                 #################################################################
                 #################################################################
                 #################################################################
@@ -975,6 +984,7 @@ class GerbilPCA():
                 if self.plot_3d==False:
                     plt.figure()
                     ctr=0
+                    hulls = []
                     for idx in idxs:
     
                         #
@@ -988,8 +998,56 @@ class GerbilPCA():
                                 label = str(self.periods[ctr]))
                         
                         #
-                        ctr+=1
                     
+
+                        # get the convex hull of temp
+                        hull = ConvexHull(temp)
+
+                        # plot the convex hull
+                        for simplex in hull.simplices:
+                            plt.plot(
+                                temp[:,0][simplex], 
+                                temp[:,1][simplex], 
+                                color=clrs[ctr],
+                                linewidth=5,
+                                alpha=.5)
+                            
+                        # save the hull
+                        hulls.append(temp[hull.vertices])
+
+                        ctr+=1
+                    plt.show()
+                    ###############################################
+                    ###############################################
+                    ###############################################
+                    # loop over hulls and find intersection area of each pair
+
+
+                    inter_array = []
+                    for k in range(len(hulls)):
+                        inter = 0
+                        for j in range(k+1,len(hulls)):
+                            # compute the intersection area of the convex hulls
+                            intersection = np.intersect1d(hulls[k], hulls[j])
+                            inter+=intersection
+
+                        print (k, "intersection: ", inter)
+                        inter_array.append(inter)
+
+                    # plot bar plot of overlap volumes
+                    plt.figure()
+                    for k in range(len(hulls)):
+                        plt.bar(k, 
+                                inter_array[k], 
+                                0.9,
+                                color=self.clrs[k],
+                                label = str(self.periods[k]))
+                                
+                        
+                    #
+                    plt.legend()
+                    
+
                 # same plot for for 3d 
                 else:
                     fig = plt.figure()
@@ -1000,6 +1058,7 @@ class GerbilPCA():
      
                     # loop over the developmental periods using hte idxs from above
                     ctr=0
+                    self.polygon_array = []
                     for idx in idxs:
                         #
                         temp = data_pca[idx[0]:idx[1]]
@@ -1039,6 +1098,7 @@ class GerbilPCA():
                         # repeat the last entry in temp and try again
                         #temp = np.vstack((temp,temp[-1]*1.01))
                         hull = ConvexHull(temp)
+                        print ("class temp size: ", temp.shape)
 
                         if cl == 'pups':
                             self.clusters.append(temp)
@@ -1055,7 +1115,7 @@ class GerbilPCA():
                                     alpha=.5)
                             
                         # Step 2: Compute the convex hull
-                        hull = ConvexHull(temp)
+                        #hull = ConvexHull(temp)
                         vertices = temp[hull.vertices]  # Vertices of the convex hull
 
                         # get the ids of the vertices
@@ -1087,6 +1147,13 @@ class GerbilPCA():
                     
                         ctr+=1  
 
+                        # save the convex hull points only
+                        #self.polygon_array.append(vertices[hull.vertices])
+                        self.polygon_array.append(temp)
+
+                # compute overlap between hulls
+                #print ("len(self.hulls): ", len(self.hulls))
+                #print ("len(self.clusters): ", len(self.clusters))
 
                 
                 #
@@ -1099,7 +1166,86 @@ class GerbilPCA():
                 plt.show()
             
 
-            
+                ##############################################
+                ##############################################
+                ##############################################
+                # Define your two polygons using their coordinates
+                
+                
+                vedo.settings.default_font = 'Bongas'
+                vedo.settings.use_depth_peeling = True
+
+                #print ("# of hulls: ", len(self.polygon_array))
+
+                pps = []
+                vols = []
+                # do 3d plot here
+                import pyvista as pv
+                pps_s = []
+                for k in range(len(self.polygon_array)):
+                    #print ("polygon: ", k, self.polygon_array[k].shape)
+                    aa = vedo.ConvexHull(self.polygon_array[k])
+
+                    polyhedron1 = pv.PolyData(self.polygon_array[k])
+                    polyhedron1.triangulate()
+                    pps_s.append(polyhedron1)
+
+                    # 
+                    pps.append(aa)
+
+                    #
+                    vol = aa.volume()
+                    print (k, "vol: ", vol)
+                    vols.append(vol)
+
+                # find the intersection of the convex hulls and add them up
+                perc_arrays = []
+                for ctr1,pp1 in enumerate(pps):
+                    temp_percent = 0
+                    for ctr2,pp2 in enumerate(pps):
+                        #
+                        if ctr1==ctr2:
+                            continue
+                        #
+                        cc = pp1.boolean("intersect", pp2)
+                        ccc = vedo.ConvexHull(cc.points())
+
+                        
+                        # Compute the intersection of the two polyhedrons
+#                        intersection = pps_s[ctr1].boolean_difference(pps_s[ctr2])
+
+                        # Calculate the volume of the intersection
+                       # intersection_volume = intersection.compute_cell_volumes().sum()
+
+                        #print("Intersection volume:", intersection_volume)
+                       # intersect = pps_s[ctr1].intersection(pps_s[ctr2])
+                        print (ctr1, ctr2, ccc.volume()/vols[ctr1])
+                        #print ("shapely intersection: ", intersect.volume)
+                        #
+                        if vols[ctr1]>0:
+                            temp_percent = max(temp_percent, 
+                                               ccc.volume()/vols[ctr1])
+                    perc_arrays.append(temp_percent)
+
+                # plot bar plot of overlap volumes
+                plt.figure()
+                for k in range(len(vols)):
+                    plt.bar(k, 
+                            perc_arrays[k], 
+                            0.9,
+                            color=self.clrs[k],
+                            label = str(self.periods[k]))
+                    
+                #
+                plt.legend()
+
+                #
+                #plt.ylim(0,1)
+
+                plt.ylabel("ratio overlap with other behaviors")
+
+                #
+                plt.show()
   
 
         # plt.figure()
@@ -1538,7 +1684,6 @@ class GerbilPCA():
         plt.show()
 
     #
-
     def find_overlaps(self):
 
         # Here we compute overlap in 3D/3PCs
