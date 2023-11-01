@@ -191,6 +191,39 @@ class GerbilPCA():
         self.dev_changes = dev_changes
         #self.dev_stable = dev_stable
 
+
+    #
+    def get_area_under_curve_Fig2(self):
+
+        # 
+        auc_f = []
+        for s in self.stack:
+            print (s.shape)
+            auc_f.append(np.trapz(s, dx=1))
+
+        #
+        auc_f = np.array(auc_f)
+        print ("auc_f :", auc_f.shape)
+        #auc_m = np.array(auc_m)
+
+        #
+        print ("auc_f mean: ", np.mean(auc_f,axis=1), " ,std: ", np.std(auc_f, axis=1))
+        
+        # # run anova test on data
+        anova = scipy.stats.f_oneway(auc_f[0],
+                                     auc_f[1],
+                                     auc_f[2],
+                                     auc_f[3],)
+        self.anova = anova
+        print ("anova: ", anova)
+        
+        # text1 = "{:.2e}".format(self.ks_[1])
+        # text2 = "{:.2e}".format(self.ttest[1])
+        # text3 = "{:.2e}".format(self.anova[1])
+        # print ("ks test: ", text1)
+        # print ("ttest: ", text2)
+        # print ("anova: ", text3)
+
     #
     def get_area_under_curve(self):
 
@@ -225,7 +258,19 @@ class GerbilPCA():
         # test the distributions for significance using ttest
         ttest = stats.ttest_ind(auc_f, auc_m)
         self.ttest = ttest
+
+        # run anova test on data
+        anova = scipy.stats.f_oneway(auc_f, auc_m)
+        self.anova = anova
         
+        text1 = "{:.2e}".format(self.ks_[1])
+        text2 = "{:.2e}".format(self.ttest[1])
+        text3 = "{:.2e}".format(self.anova[1])
+        print ("ks test: ", text1)
+        print ("ttest: ", text2)
+        print ("anova: ", text3)
+
+
     #
     def plot_area_under_curve(self):    
         # plot scatter plot for each auc array separately in two columns
