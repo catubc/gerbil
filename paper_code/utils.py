@@ -216,13 +216,330 @@ class GerbilPCA():
                                      auc_f[3],)
         self.anova = anova
         print ("anova: ", anova)
+
+    #
+    def get_pups_exploration_distance_food_water(self):
+    # 
+        print (len(self.stack))
+        print (self.stack[0].shape)
+        print (self.stack[1].shape)
+
+        #
+        c1_females = self.stack[0][:2]
+        c2_females = self.stack[0][2:5]
+        print ("c1_females: ", c1_females.shape)
+        print ("c2_females: ", c2_females.shape)
+
+        # make male average for each cohort to subtraact against
+        c1_male_ave = np.mean(self.stack[1][:2], axis=0)
+        print ("c1 male average over dev: ", c1_male_ave.shape)
+        c2_male_ave = self.stack[1][2]
+        print ("c2 male average over dev: ", c2_male_ave.shape)
+
+        # compute diffs over each cohort manually
+        diffs_c1 = []
+        for c1_fem in c1_females:
+            temp = c1_fem - c1_male_ave
+            #print ("c1 diff: ", temp)
+            diffs_c1.append(temp)
+        diffs_c1 = np.array(diffs_c1).flatten()
+
+        #
+        diffs_c2 = []
+        for c2_fem in c2_females:
+            temp = c2_fem - c2_male_ave
+            #print ("c2 diff: ", temp)
+            diffs_c2.append(temp)
+
+        diffs_c2 = np.array(diffs_c2).flatten()
         
-        # text1 = "{:.2e}".format(self.ks_[1])
-        # text2 = "{:.2e}".format(self.ttest[1])
-        # text3 = "{:.2e}".format(self.anova[1])
-        # print ("ks test: ", text1)
-        # print ("ttest: ", text2)
-        # print ("anova: ", text3)
+        diffs = np.hstack((diffs_c1,
+                           diffs_c2))
+        print (diffs.shape)
+
+        # same but shuffled female and male identity
+        diffs_shuffled = []
+        diffs_c2 = []
+        diffs_c1 = []
+        for p in range(100):
+            for c1_fem in c1_females:
+                for k in range(c1_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                        temp = c1_fem[k]-c1_male_ave[k]
+                    else:
+                        temp = c1_male_ave[k]-c1_fem[k]
+                diffs_c1.append(temp)
+
+            #
+            for c2_fem in c2_females:
+                for k in range(c2_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                        temp = c2_fem[k]-c2_male_ave[k]
+                    else:
+                        temp = c2_male_ave[k]-c2_fem[k]
+                diffs_c2.append(temp)
+
+        #
+        diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
+            
+        return diffs, diffs_shuffled
+
+    def get_pups_adults_pairwise(self):
+
+        #
+        print ('behaviors: ', self.behaviors)
+
+        #
+        print (len(self.stack))
+        print (self.stack[0].shape)
+        print (self.stack[1].shape)
+
+        #
+        c1_females = self.stack[0][:2]
+        c2_females = self.stack[0][2:5]
+        print ("c1_females: ", c1_females.shape)
+        print ("c2_females: ", c2_females.shape)
+
+        # make male average for each cohort to subtraact against
+        c1_male_ave = np.mean(self.stack[1][:2], axis=0)
+        print ("c1 male average over dev: ", c1_male_ave.shape)
+        c2_male_ave = self.stack[1][2]
+        print ("c2 male average over dev: ", c2_male_ave.shape)
+
+        # compute diffs over each cohort manually
+        diffs_c1 = []
+        for c1_fem in c1_females:
+            temp = c1_fem - c1_male_ave
+            #print ("c1 diff: ", temp)
+            diffs_c1.append(temp)
+        diffs_c1 = np.array(diffs_c1).flatten()
+
+        #
+        diffs_c2 = []
+        for c2_fem in c2_females:
+            temp = c2_fem - c2_male_ave
+            #print ("c2 diff: ", temp)
+            diffs_c2.append(temp)
+
+        diffs_c2 = np.array(diffs_c2).flatten()
+        
+        diffs = np.hstack((diffs_c1,
+                           diffs_c2))
+        print ("diffs: ", diffs.shape)
+
+        # same but shuffled female and male identity
+        diffs_shuffled = []
+        diffs_c2 = []
+        diffs_c1 = []
+        for p in range(100):
+            for c1_fem in c1_females:
+                for k in range(c1_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                        temp = c1_fem[k]-c1_male_ave[k]
+                    else:
+                        temp = c1_male_ave[k]-c1_fem[k]
+                diffs_c1.append(temp)
+
+            #
+            for c2_fem in c2_females:
+                for k in range(c2_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                        temp = c2_fem[k]-c2_male_ave[k]
+                    else:
+                        temp = c2_male_ave[k]-c2_fem[k]
+                diffs_c2.append(temp)
+
+        #
+        diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
+            
+        return diffs, diffs_shuffled
+
+    #
+    def get_pups_pairwise(self):
+
+        #
+        print ('behaviors: ', self.behaviors)
+
+        #
+        print (len(self.stack))
+        print (self.stack[0].shape)
+        print (self.stack[1].shape)
+
+        #
+        c1_females = self.stack[0][0][None]
+        c2_females = self.stack[0][1:4]
+        print ("c1_females: ", c1_females.shape)
+        print ("c2_females: ", c2_females.shape)
+
+        # make male average for each cohort to subtraact against
+        c1_male_ave = np.mean(self.stack[1][:4], axis=0)
+        print ("c1 male average over dev: ", c1_male_ave.shape)
+        c2_male_ave = np.mean(self.stack[1][4:], axis=0)
+        print ("c2 male average over dev: ", c2_male_ave.shape)
+
+        # compute diffs over each cohort manually
+        diffs_c1 = []
+        for c1_fem in c1_females:
+            temp = c1_fem - c1_male_ave
+            #print ("c1 diff: ", temp)
+            diffs_c1.append(temp)
+        diffs_c1 = np.array(diffs_c1).flatten()
+
+        #
+        diffs_c2 = []
+        for c2_fem in c2_females:
+            temp = c2_fem - c2_male_ave
+            #print ("c2 diff: ", temp)
+            diffs_c2.append(temp)
+
+        diffs_c2 = np.array(diffs_c2).flatten()
+        
+        diffs = np.hstack((diffs_c1,
+                           diffs_c2))
+        print ("diffs: ", diffs.shape)
+
+        # same but shuffled female and male identity
+        diffs_shuffled = []
+        diffs_c1 = []
+        diffs_c2 = []
+        for p in range(100):
+            for c1_fem in c1_females:
+                for k in range(c1_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                        temp = c1_fem[k]-c1_male_ave[k]
+                    else:
+                        temp = c1_male_ave[k]-c1_fem[k]
+                diffs_c1.append(temp)
+
+            #
+            for c2_fem in c2_females:
+                for k in range(c2_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                        temp = c2_fem[k]-c2_male_ave[k]
+                    else:
+                        temp = c2_male_ave[k]-c2_fem[k]
+                diffs_c2.append(temp)
+
+        #
+        diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
+            
+        return diffs, diffs_shuffled
+
+    #
+    def intra_cohort_stats_pups(self):
+
+        if 'exploration' in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
+        elif 'distance' in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
+        elif 'food' in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
+        elif 'water' in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
+        elif 'pairwise' in self.behaviors[0] and 'adult' not in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_pairwise()
+        elif 'pairwise' in self.behaviors[0] and 'adult' in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_adults_pairwise()
+        # elif ''
+
+        # compute 2 sample ks test on diffs and diffs_shuffled
+        ks_ = ks_2samp(diffs.flatten(), diffs_shuffled.flatten())
+        print ("ks test: ", ks_)
+
+        # also test diffs against a normal- zero mean distribution
+        ttest = stats.ttest_1samp(diffs.flatten(), 0)
+        print ("ttest: ", ttest)
+
+        # plot diffs as a violin plot for each distribution with diffs at x=0 and diffs_shuffled at x=1
+        plt.figure(figsize=(10,5))
+        plt.subplot(111)
+        plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
+        plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
+
+ 
+        # label x axis with "real" and "shuffled"
+        plt.xticks([0,1], ['real', 'shuffled'])
+
+        # plot horizontal line at y=0
+        plt.plot([-0.5,1.5], [0,0], 'k--')
+
+        # show ks test result as title
+        text1 = "{:.2e}".format(ks_[1])
+        text2 = "{:.2e}".format(ttest[1])
+        plt.title("ks test pval: "+text1 + "\n" + "ttest pval: "+text2)
+
+        plt.suptitle(self.behaviors)
+
+        #
+        plt.ylabel("Intra cohort diffs (females-males @ every pday)")
+
+        plt.show()
+    #
+    def intra_cohort_stats_adults(self):
+        # 
+        temp_stack = np.vstack(self.stack).copy()
+
+        # females
+        females = temp_stack[:3]
+        males = temp_stack[3:]
+        print ("adult females: ", females.shape, ", adult males: ", males.shape)
+
+        # diffs
+        diffs = females-males
+
+        # same but shuffled female and male identity
+        diffs_shuffled = []
+        for p in range(100):
+            for k in range(females.shape[0]):
+                idx = np.random.choice(np.arange(2))
+                if idx==0:
+                    temp = females[k]-males[k]
+                else:
+                    temp = males[k]-females[k]
+
+                diffs_shuffled.append(temp)
+
+        #
+        diffs_shuffled = np.array(diffs_shuffled)
+
+        # compute 2 sample ks test on diffs and diffs_shuffled
+        ks_ = ks_2samp(diffs.flatten(), diffs_shuffled.flatten())
+        print ("ks test: ", ks_)
+
+        # also test diffs against a normal- zero mean distribution
+        ttest = stats.ttest_1samp(diffs.flatten(), 0)
+        print ("ttest: ", ttest)
+
+        # plot diffs as a violin plot for each distribution with diffs at x=0 and diffs_shuffled at x=1
+        plt.figure(figsize=(10,5))
+        plt.subplot(111)
+        plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
+        plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
+
+        # label x axis with "real" and "shuffled"
+        plt.xticks([0,1], ['real', 'shuffled'])
+
+        # plot horizontal line at y=0
+        plt.plot([-0.5,1.5], [0,0], 'k--')
+
+        # show ks test result as title
+        text1 = "{:.2e}".format(ks_[1])
+        text2 = "{:.2e}".format(ttest[1])
+        plt.title("ks test pval: "+text1 + "\n" + "ttest pval: "+text2)
+
+        plt.suptitle(self.behaviors)
+
+        #
+        plt.ylabel("Intra cohort diffs (females-males @ every pday)")
+
+        plt.show()
+
 
     #
     def get_area_under_curve(self):
@@ -1325,6 +1642,11 @@ class GerbilPCA():
         plt.figure(figsize=(10,10))
         ctr=0
         for s in self.stack:
+
+            #
+            print ("s: ", s.shape)
+
+            #
             mean = np.mean(s,axis=0)
             std = np.std(s,axis=0)
 
