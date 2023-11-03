@@ -365,9 +365,8 @@ class GerbilPCA():
         return diffs, diffs_shuffled
 
     #
-    def get_pups_pairwise(self):
-
-        #
+    def get_pups_exits(self):
+       #
         print ('behaviors: ', self.behaviors)
 
         #
@@ -376,15 +375,15 @@ class GerbilPCA():
         print (self.stack[1].shape)
 
         #
-        c1_females = self.stack[0][0][None]
-        c2_females = self.stack[0][1:4]
+        c1_females = self.stack[0][:2]
+        c2_females = self.stack[0][2:5]
         print ("c1_females: ", c1_females.shape)
         print ("c2_females: ", c2_females.shape)
 
         # make male average for each cohort to subtraact against
-        c1_male_ave = np.mean(self.stack[1][:4], axis=0)
+        c1_male_ave = np.mean(self.stack[1][:2], axis=0)
         print ("c1 male average over dev: ", c1_male_ave.shape)
-        c2_male_ave = np.mean(self.stack[1][4:], axis=0)
+        c2_male_ave = self.stack[1][2]
         print ("c2 male average over dev: ", c2_male_ave.shape)
 
         # compute diffs over each cohort manually
@@ -407,6 +406,160 @@ class GerbilPCA():
         diffs = np.hstack((diffs_c1,
                            diffs_c2))
         print ("diffs: ", diffs.shape)
+
+        # same but shuffled female and male identity
+        # same but shuffled female and male identity
+        diffs_shuffled = []
+        diffs_c1 = []
+        diffs_c2 = []
+        for _ in range(100):
+            for c1_fem in c1_females:
+                for k in range(c1_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                    #if True:
+                        temp = c1_fem[k]-c1_male_ave[k]
+                    else:
+                        temp = c1_male_ave[k]-c1_fem[k]
+                    diffs_c1.append(temp)
+
+            #
+            for c2_fem in c2_females:
+                for k in range(c2_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                    #if True:
+                        temp = c2_fem[k]-c2_male_ave[k]
+                    else:
+                        temp = c2_male_ave[k]-c2_fem[k]
+                    diffs_c2.append(temp)
+
+        #
+        diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
+            
+        return diffs, diffs_shuffled
+
+    #
+    def get_pups_pups_pairwise(self):
+         #
+        print ('behaviors: ', self.behaviors)
+
+        #
+        print (len(self.stack))
+        print (self.stack[0].shape)
+        print (self.stack[1].shape)
+
+        #
+        c1_females = self.stack[0][0][None]
+        c2_females = self.stack[0][1:4]
+        print ("c1_females: ", c1_females.shape)
+        print ("c2_females: ", c2_females.shape)
+
+        # make male average for each cohort to subtraact against
+        c1_male_ave = np.mean(self.stack[1][:4], axis=0)
+        print ("c1 male average over dev: ", c1_male_ave.shape, c1_male_ave)
+        c2_male_ave = np.mean(self.stack[1][4:], axis=0)
+        print ("c2 male average over dev: ", c2_male_ave.shape, c2_male_ave)
+
+        # compute diffs over each cohort manually
+        diffs_c1 = []
+        for c1_fem in c1_females:
+            temp = c1_fem - c1_male_ave
+            print ("c1 diff: ", temp)
+            diffs_c1.append(temp)
+        diffs_c1 = np.array(diffs_c1).flatten()
+
+
+        #
+        diffs_c2 = []
+        for c2_fem in c2_females:
+            temp = c2_fem - c2_male_ave
+            print ("c2 diff: ", temp)
+            diffs_c2.append(temp)
+
+        diffs_c2 = np.array(diffs_c2).flatten()
+        
+        diffs = np.hstack((diffs_c1,
+                           diffs_c2))
+        print ("diffs: ", diffs.shape)
+        print ("diffs: ", diffs)
+
+        # same but shuffled female and male identity
+        diffs_shuffled = []
+        diffs_c1 = []
+        diffs_c2 = []
+        for _ in range(100):
+            for c1_fem in c1_females:
+                for k in range(c1_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                    #if True:
+                        temp = c1_fem[k]-c1_male_ave[k]
+                    else:
+                        temp = c1_male_ave[k]-c1_fem[k]
+                    diffs_c1.append(temp)
+
+            #
+            for c2_fem in c2_females:
+                for k in range(c2_fem.shape[0]):
+                    idx = np.random.choice(np.arange(2))
+                    if idx==0:
+                    #if True:
+                        temp = c2_fem[k]-c2_male_ave[k]
+                    else:
+                        temp = c2_male_ave[k]-c2_fem[k]
+                    diffs_c2.append(temp)
+
+        #
+        diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
+            
+        return diffs, diffs_shuffled
+
+    #
+    def get_pups_pairwise(self):
+
+        #
+        print ('behaviors: ', self.behaviors)
+
+        #
+        print (len(self.stack))
+        print (self.stack[0].shape)
+        print (self.stack[1].shape)
+
+        #
+        c1_females = self.stack[0][0][None]
+        c2_females = self.stack[0][1:4]
+        print ("c1_females: ", c1_females.shape)
+        print ("c2_females: ", c2_females.shape)
+
+        # make male average for each cohort to subtraact against
+        c1_male_ave = np.mean(self.stack[1][:4], axis=0)
+        print ("c1 male average over dev: ", c1_male_ave.shape, c1_male_ave)
+        c2_male_ave = np.mean(self.stack[1][4:], axis=0)
+        print ("c2 male average over dev: ", c2_male_ave.shape, c2_male_ave)
+
+        # compute diffs over each cohort manually
+        diffs_c1 = []
+        for c1_fem in c1_females:
+            temp = c1_fem - c1_male_ave
+            print ("c1 diff: ", temp)
+            diffs_c1.append(temp)
+        diffs_c1 = np.array(diffs_c1).flatten()
+
+
+        #
+        diffs_c2 = []
+        for c2_fem in c2_females:
+            temp = c2_fem - c2_male_ave
+            print ("c2 diff: ", temp)
+            diffs_c2.append(temp)
+
+        diffs_c2 = np.array(diffs_c2).flatten()
+        
+        diffs = np.hstack((diffs_c1,
+                           diffs_c2))
+        print ("diffs: ", diffs.shape)
+        print ("diffs: ", diffs)
 
         # same but shuffled female and male identity
         diffs_shuffled = []
@@ -460,10 +613,14 @@ class GerbilPCA():
         elif 'pairwise' in self.behaviors[0] and 'adult' in self.behaviors[0]:
             print ("Processing pairwise proxmity pup vs adult")
             diffs, diffs_shuffled = self.get_pups_adults_pairwise()
-        #elif 'pairwise' in self.behaviors[0] and 'pup' in self.behaviors[0]:
-        
+        elif 'exit' in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_exits()
+        elif 'approaches' in self.behaviors[0] and 'adult' in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_adults_pairwise()
+        elif 'approaches' in self.behaviors[0] and 'adult' not in self.behaviors[0]:
+            diffs, diffs_shuffled = self.get_pups_pups_pairwise()
         else:
-            print ("ERROR: behavior not found")
+            print ("ERROR: behavior not found", self.behaviors)
             return
             
         self.diffs = diffs
@@ -489,12 +646,11 @@ class GerbilPCA():
         # plot diffs as a violin plot for each distribution with diffs at x=0 and diffs_shuffled at x=1
         plt.figure(figsize=(10,5))
         plt.subplot(111)
-        #plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
-        #plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
 
+        #
         n_bins = 10
 
-#
+        #
         ymax = np.max(self.diffs_shuffled.flatten())
         ymin = np.min(self.diffs_shuffled.flatten())
         bins = np.linspace(ymin, ymax, n_bins)
@@ -575,7 +731,9 @@ class GerbilPCA():
         #
         plt.ylabel("Intra cohort diffs (females-males @ every pday)")
 
+        #
         plt.show()
+
     #
     def intra_cohort_stats_adults(self):
         # 
@@ -678,9 +836,7 @@ class GerbilPCA():
         print ("ttest: ", ttest)
 
         #
-
         plt.show()
-
 
     #
     def compute_dev_stages_histogram(self):
