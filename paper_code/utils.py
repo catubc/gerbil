@@ -258,28 +258,31 @@ class GerbilPCA():
         print (diffs.shape)
 
         # same but shuffled female and male identity
+        # same but shuffled female and male identity
         diffs_shuffled = []
-        diffs_c2 = []
         diffs_c1 = []
-        for p in range(100):
+        diffs_c2 = []
+        for _ in range(100):
             for c1_fem in c1_females:
                 for k in range(c1_fem.shape[0]):
                     idx = np.random.choice(np.arange(2))
                     if idx==0:
+                    #if True:
                         temp = c1_fem[k]-c1_male_ave[k]
                     else:
                         temp = c1_male_ave[k]-c1_fem[k]
-                diffs_c1.append(temp)
+                    diffs_c1.append(temp)
 
             #
             for c2_fem in c2_females:
                 for k in range(c2_fem.shape[0]):
                     idx = np.random.choice(np.arange(2))
                     if idx==0:
+                    #if True:
                         temp = c2_fem[k]-c2_male_ave[k]
                     else:
                         temp = c2_male_ave[k]-c2_fem[k]
-                diffs_c2.append(temp)
+                    diffs_c2.append(temp)
 
         #
         diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
@@ -330,28 +333,31 @@ class GerbilPCA():
         print ("diffs: ", diffs.shape)
 
         # same but shuffled female and male identity
+        # same but shuffled female and male identity
         diffs_shuffled = []
-        diffs_c2 = []
         diffs_c1 = []
-        for p in range(100):
+        diffs_c2 = []
+        for _ in range(100):
             for c1_fem in c1_females:
                 for k in range(c1_fem.shape[0]):
                     idx = np.random.choice(np.arange(2))
                     if idx==0:
+                    #if True:
                         temp = c1_fem[k]-c1_male_ave[k]
                     else:
                         temp = c1_male_ave[k]-c1_fem[k]
-                diffs_c1.append(temp)
+                    diffs_c1.append(temp)
 
             #
             for c2_fem in c2_females:
                 for k in range(c2_fem.shape[0]):
                     idx = np.random.choice(np.arange(2))
                     if idx==0:
+                    #if True:
                         temp = c2_fem[k]-c2_male_ave[k]
                     else:
                         temp = c2_male_ave[k]-c2_fem[k]
-                diffs_c2.append(temp)
+                    diffs_c2.append(temp)
 
         #
         diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
@@ -406,25 +412,27 @@ class GerbilPCA():
         diffs_shuffled = []
         diffs_c1 = []
         diffs_c2 = []
-        for p in range(100):
+        for _ in range(100):
             for c1_fem in c1_females:
                 for k in range(c1_fem.shape[0]):
                     idx = np.random.choice(np.arange(2))
                     if idx==0:
+                    #if True:
                         temp = c1_fem[k]-c1_male_ave[k]
                     else:
                         temp = c1_male_ave[k]-c1_fem[k]
-                diffs_c1.append(temp)
+                    diffs_c1.append(temp)
 
             #
             for c2_fem in c2_females:
                 for k in range(c2_fem.shape[0]):
                     idx = np.random.choice(np.arange(2))
                     if idx==0:
+                    #if True:
                         temp = c2_fem[k]-c2_male_ave[k]
                     else:
                         temp = c2_male_ave[k]-c2_fem[k]
-                diffs_c2.append(temp)
+                    diffs_c2.append(temp)
 
         #
         diffs_shuffled = np.hstack((diffs_c1, diffs_c2))
@@ -435,19 +443,29 @@ class GerbilPCA():
     def intra_cohort_stats_pups(self):
 
         if 'exploration' in self.behaviors[0]:
+            print ("Processing pup exploration")
             diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
         elif 'distance' in self.behaviors[0]:
+            print ("Processing pup distance")
             diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
         elif 'food' in self.behaviors[0]:
+            print ("Processing pup food")
             diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
         elif 'water' in self.behaviors[0]:
+            print ("Processing pup water")
             diffs, diffs_shuffled = self.get_pups_exploration_distance_food_water()
         elif 'pairwise' in self.behaviors[0] and 'adult' not in self.behaviors[0]:
+            print ("Processing pairwise proxmity pup vs pup")
             diffs, diffs_shuffled = self.get_pups_pairwise()
         elif 'pairwise' in self.behaviors[0] and 'adult' in self.behaviors[0]:
+            print ("Processing pairwise proxmity pup vs adult")
             diffs, diffs_shuffled = self.get_pups_adults_pairwise()
-        # elif ''
-
+        #elif 'pairwise' in self.behaviors[0] and 'pup' in self.behaviors[0]:
+        
+        else:
+            print ("ERROR: behavior not found")
+            return
+            
         self.diffs = diffs
         self.diffs_shuffled = diffs_shuffled
 
@@ -474,20 +492,25 @@ class GerbilPCA():
         #plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
         #plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
 
-        n_bins = 25
+        n_bins = 10
 
 #
-        ymax = np.max(self.diffs_shuffled.flatten())*2
+        ymax = np.max(self.diffs_shuffled.flatten())
         ymin = np.min(self.diffs_shuffled.flatten())
-        print ("ymin: ", ymin, ", ymax: ", ymax)
-        if ymin <0:
-            ymin *= 2
-        else:
-            ymin *= 0.5
-        print ("ymin: ", ymin, ", ymax: ", ymax)
         bins = np.linspace(ymin, ymax, n_bins)
+        bin_size = bins[1]-bins[0]
+
+        # add 1 more bin before and after to the range
+        bins = np.linspace(ymin-2*bin_size, ymax+2*bin_size, n_bins+4)
+
         y = np.histogram(self.diffs_shuffled.flatten(), bins=bins)
         yy = y[0]/np.max(y[0])
+
+        # make a smoother version of yy\
+        yy = savgol_filter(yy, 5, 3)
+        yy[yy<0]=0
+
+        #
         mean = np.mean(self.diffs_shuffled.flatten())
                        
         plt.plot(y[1][:-1], yy, label='shuffled mean:'+
@@ -499,21 +522,24 @@ class GerbilPCA():
                     c=clrs[1])
         
         # plot histograms of self.diffs and self.diffs_shuffled
-        # ymax = np.max(self.diffs.flatten())*2
-        # ymin = np.min(self.diffs.flatten())
-        # print ("ymin: ", ymin, ", ymax: ", ymax)
-        # if ymin <0:
-        #     ymin *= 2
-        # else:
-        #     ymin *= 0.5
-        # print ("ymin: ", ymin, ", ymax: ", ymax)
+        ymax = np.max(self.diffs.flatten())
+        ymin = np.min(self.diffs.flatten())
         bins = np.linspace(ymin, ymax, n_bins)
+        bin_size = bins[1]-bins[0]
+        bins = np.linspace(ymin-2*bin_size, ymax+2*bin_size, n_bins+4)
+
         y = np.histogram(self.diffs.flatten(), bins=bins)
         yy = y[0]/np.max(y[0])
         mean = np.mean(self.diffs.flatten())
-                       
+        std = np.std(self.diffs.flatten())
+        yy = savgol_filter(yy, 5, 3)
+
+        # replace all negative values with 0
+        yy[yy<0]=0
+
         plt.plot(y[1][:-1], yy, label='real mean:'+
-                 str(round(mean,5)), linewidth=5,
+                 str(round(mean,5)) + ', std: '+str(round(std,5)),
+                   linewidth=5,
                  c=clrs[0])
         
         # plot a vertical dashed line at the mean of yy
@@ -565,10 +591,11 @@ class GerbilPCA():
 
         # same but shuffled female and male identity
         diffs_shuffled = []
-        for p in range(100):
+        for _ in range(100):
             for k in range(females.shape[0]):
                 idx = np.random.choice(np.arange(2))
                 if idx==0:
+                #if True:
                     temp = females[k]-males[k]
                 else:
                     temp = males[k]-females[k]
@@ -583,39 +610,6 @@ class GerbilPCA():
 
         #
         self.plot_test_results()
-
-        # # compute 2 sample ks test on diffs and diffs_shuffled
-        # ks_ = ks_2samp(diffs.flatten(), diffs_shuffled.flatten())
-        # print ("ks test: ", ks_)
-
-        # # also test diffs against a normal- zero mean distribution
-        # ttest = stats.ttest_1samp(diffs.flatten(), 0)
-        # print ("ttest: ", ttest)
-
-        # # plot diffs as a violin plot for each distribution with diffs at x=0 and diffs_shuffled at x=1
-        # plt.figure(figsize=(10,5))
-        # plt.subplot(111)
-        # plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
-        # plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
-
-        # # label x axis with "real" and "shuffled"
-        # plt.xticks([0,1], ['real', 'shuffled'])
-
-        # # plot horizontal line at y=0
-        # plt.plot([-0.5,1.5], [0,0], 'k--')
-
-        # # show ks test result as title
-        # text1 = "{:.2e}".format(ks_[1])
-        # text2 = "{:.2e}".format(ttest[1])
-        # plt.title("ks test pval: "+text1 + "\n" + "ttest pval: "+text2)
-
-        # plt.suptitle(self.behaviors)
-
-        # #
-        # plt.ylabel("Intra cohort diffs (females-males @ every pday)")
-
-        # plt.show()
-
 
     #
     def get_area_under_curve(self):
@@ -1770,7 +1764,7 @@ class GerbilPCA():
         plt.xticks(np.arange(14),labels)
 
         plt.xlabel("dev PDay")
-        plt.ylabel("kl divergence in sequential windows")
+        plt.ylabel("Time / distance")
 
         #
         plt.legend()
