@@ -448,26 +448,88 @@ class GerbilPCA():
             diffs, diffs_shuffled = self.get_pups_adults_pairwise()
         # elif ''
 
+        self.diffs = diffs
+        self.diffs_shuffled = diffs_shuffled
+
+        #
+        self.plot_test_results()
+
+    #
+    def plot_test_results(self):
+
         # compute 2 sample ks test on diffs and diffs_shuffled
-        ks_ = ks_2samp(diffs.flatten(), diffs_shuffled.flatten())
+        ks_ = ks_2samp(self.diffs.flatten(), self.diffs_shuffled.flatten())
         print ("ks test: ", ks_)
 
         # also test diffs against a normal- zero mean distribution
-        ttest = stats.ttest_1samp(diffs.flatten(), 0)
+        ttest = stats.ttest_1samp(self.diffs.flatten(), 0)
         print ("ttest: ", ttest)
+
+        #
+        clrs = ['blue','red']
 
         # plot diffs as a violin plot for each distribution with diffs at x=0 and diffs_shuffled at x=1
         plt.figure(figsize=(10,5))
         plt.subplot(111)
-        plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
-        plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
+        #plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
+        #plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
+
+        n_bins = 25
+
+#
+        ymax = np.max(self.diffs_shuffled.flatten())*2
+        ymin = np.min(self.diffs_shuffled.flatten())
+        print ("ymin: ", ymin, ", ymax: ", ymax)
+        if ymin <0:
+            ymin *= 2
+        else:
+            ymin *= 0.5
+        print ("ymin: ", ymin, ", ymax: ", ymax)
+        bins = np.linspace(ymin, ymax, n_bins)
+        y = np.histogram(self.diffs_shuffled.flatten(), bins=bins)
+        yy = y[0]/np.max(y[0])
+        mean = np.mean(self.diffs_shuffled.flatten())
+                       
+        plt.plot(y[1][:-1], yy, label='shuffled mean:'+
+                 str(round(mean,5)), linewidth=5,
+                 c=clrs[1])
+        # plot a vertical dashed line at the mean of yy
+        plt.plot([mean, mean],
+                    [0,1], 'k--',
+                    c=clrs[1])
+        
+        # plot histograms of self.diffs and self.diffs_shuffled
+        # ymax = np.max(self.diffs.flatten())*2
+        # ymin = np.min(self.diffs.flatten())
+        # print ("ymin: ", ymin, ", ymax: ", ymax)
+        # if ymin <0:
+        #     ymin *= 2
+        # else:
+        #     ymin *= 0.5
+        # print ("ymin: ", ymin, ", ymax: ", ymax)
+        bins = np.linspace(ymin, ymax, n_bins)
+        y = np.histogram(self.diffs.flatten(), bins=bins)
+        yy = y[0]/np.max(y[0])
+        mean = np.mean(self.diffs.flatten())
+                       
+        plt.plot(y[1][:-1], yy, label='real mean:'+
+                 str(round(mean,5)), linewidth=5,
+                 c=clrs[0])
+        
+        # plot a vertical dashed line at the mean of yy
+        plt.plot([np.mean(self.diffs.flatten()), np.mean(self.diffs.flatten())],
+                 [0,1], 'k--',
+                 c=clrs[0])
+
+        
 
  
         # label x axis with "real" and "shuffled"
-        plt.xticks([0,1], ['real', 'shuffled'])
+        #plt.xticks([0,1], ['real', 'shuffled'])
 
-        # plot horizontal line at y=0
-        plt.plot([-0.5,1.5], [0,0], 'k--')
+        # get xmin and xmax from plot xlim
+        xmin, xmax = plt.xlim() 
+        plt.plot([xmin, xmax], [0,0], 'k--')
 
         # show ks test result as title
         text1 = "{:.2e}".format(ks_[1])
@@ -475,6 +537,14 @@ class GerbilPCA():
         plt.title("ks test pval: "+text1 + "\n" + "ttest pval: "+text2)
 
         plt.suptitle(self.behaviors)
+
+        # plot xlabel
+        text3 = self.behaviors[0] + " - " + self.behaviors[1] + "(Per day)"
+
+
+        plt.xlabel(text3)
+        #
+        plt.legend()
 
         #
         plt.ylabel("Intra cohort diffs (females-males @ every pday)")
@@ -508,37 +578,43 @@ class GerbilPCA():
         #
         diffs_shuffled = np.array(diffs_shuffled)
 
-        # compute 2 sample ks test on diffs and diffs_shuffled
-        ks_ = ks_2samp(diffs.flatten(), diffs_shuffled.flatten())
-        print ("ks test: ", ks_)
-
-        # also test diffs against a normal- zero mean distribution
-        ttest = stats.ttest_1samp(diffs.flatten(), 0)
-        print ("ttest: ", ttest)
-
-        # plot diffs as a violin plot for each distribution with diffs at x=0 and diffs_shuffled at x=1
-        plt.figure(figsize=(10,5))
-        plt.subplot(111)
-        plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
-        plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
-
-        # label x axis with "real" and "shuffled"
-        plt.xticks([0,1], ['real', 'shuffled'])
-
-        # plot horizontal line at y=0
-        plt.plot([-0.5,1.5], [0,0], 'k--')
-
-        # show ks test result as title
-        text1 = "{:.2e}".format(ks_[1])
-        text2 = "{:.2e}".format(ttest[1])
-        plt.title("ks test pval: "+text1 + "\n" + "ttest pval: "+text2)
-
-        plt.suptitle(self.behaviors)
+        self.diffs = diffs
+        self.diffs_shuffled = diffs_shuffled
 
         #
-        plt.ylabel("Intra cohort diffs (females-males @ every pday)")
+        self.plot_test_results()
 
-        plt.show()
+        # # compute 2 sample ks test on diffs and diffs_shuffled
+        # ks_ = ks_2samp(diffs.flatten(), diffs_shuffled.flatten())
+        # print ("ks test: ", ks_)
+
+        # # also test diffs against a normal- zero mean distribution
+        # ttest = stats.ttest_1samp(diffs.flatten(), 0)
+        # print ("ttest: ", ttest)
+
+        # # plot diffs as a violin plot for each distribution with diffs at x=0 and diffs_shuffled at x=1
+        # plt.figure(figsize=(10,5))
+        # plt.subplot(111)
+        # plt.violinplot(diffs.flatten(), positions=[0], showmeans=True)
+        # plt.violinplot(diffs_shuffled.flatten(), positions=[1], showmeans=True)
+
+        # # label x axis with "real" and "shuffled"
+        # plt.xticks([0,1], ['real', 'shuffled'])
+
+        # # plot horizontal line at y=0
+        # plt.plot([-0.5,1.5], [0,0], 'k--')
+
+        # # show ks test result as title
+        # text1 = "{:.2e}".format(ks_[1])
+        # text2 = "{:.2e}".format(ttest[1])
+        # plt.title("ks test pval: "+text1 + "\n" + "ttest pval: "+text2)
+
+        # plt.suptitle(self.behaviors)
+
+        # #
+        # plt.ylabel("Intra cohort diffs (females-males @ every pday)")
+
+        # plt.show()
 
 
     #
