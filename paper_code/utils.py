@@ -649,6 +649,7 @@ class GerbilPCA():
 
         #
         n_bins = 10
+        linewidth=10
 
         #
         ymax = np.max(self.diffs_shuffled.flatten())
@@ -670,8 +671,11 @@ class GerbilPCA():
         mean = np.mean(self.diffs_shuffled.flatten())
                        
         plt.plot(y[1][:-1], yy, label='shuffled mean:'+
-                 str(round(mean,5)), linewidth=5,
-                 c=clrs[1])
+                 str(round(mean,5)),
+                  c='black',
+                 linestyle=':',
+                 linewidth = linewidth)
+        
         # plot a vertical dashed line at the mean of yy
         plt.plot([mean, mean],
                     [0,1], 'k--',
@@ -689,19 +693,19 @@ class GerbilPCA():
         mean = np.mean(self.diffs.flatten())
         std = np.std(self.diffs.flatten())
         yy = savgol_filter(yy, 5, 3)
+        yy[yy<0]=0
 
         # replace all negative values with 0
-        yy[yy<0]=0
 
         plt.plot(y[1][:-1], yy, label='real mean:'+
                  str(round(mean,5)) + ', std: '+str(round(std,5)),
-                   linewidth=5,
-                 c=clrs[0])
+                   linewidth=linewidth,
+                 c='black')
         
         # plot a vertical dashed line at the mean of yy
         plt.plot([np.mean(self.diffs.flatten()), np.mean(self.diffs.flatten())],
                  [0,1], 'k--',
-                 c=clrs[0])
+                 c='black')
 
         
 
@@ -1363,9 +1367,9 @@ class GerbilPCA():
         #
         plt.figure()
         plt.imshow(res_matrix, 
-                   cmap='jet', 
-                   
-                interpolation='none')
+                   cmap='viridis', 
+                   interpolation='none')
+        
         plt.colorbar()
         plt.ylim(16,30)
         plt.xlim(16,30)
@@ -1377,6 +1381,9 @@ class GerbilPCA():
                     fontsize=10)
         #
         plt.show()
+
+        #
+        plt.savefig('/home/cat/fig4_optimize.svg')
                 
     #
     def circadian_plots(self):

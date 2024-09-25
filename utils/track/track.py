@@ -23,11 +23,11 @@ import os
 import cv2
 from tqdm.auto import tqdm, trange
 
-import sleap
+#import sleap
 import h5py
 from scipy import signal
 import pandas as pd
-from sleap.skeleton import Node, Skeleton
+#from sleap.skeleton import Node, Skeleton
 from typing import Callable, Dict, Iterator, List, Optional, Type, Tuple
 
 #
@@ -2904,19 +2904,19 @@ def detect_id_switch_no_plot(fname_movie,
     print("found: ", len(frame_ids), " switches")
     return frame_ids
 
-def compare_skeletons(skeleton: Skeleton,
-                      new_skeleton: Skeleton) -> Tuple[List[str], List[str]]:
+# def compare_skeletons(skeleton: Skeleton,
+#                       new_skeleton: Skeleton) -> Tuple[List[str], List[str]]:
 
-    delete_nodes = []
-    add_nodes = []
-    if skeleton.node_names != new_skeleton.node_names:
-        # Compare skeletons
-        base_nodes = skeleton.node_names
-        new_nodes = new_skeleton.node_names
-        delete_nodes = [node for node in base_nodes if node not in new_nodes]
-        add_nodes = [node for node in new_nodes if node not in base_nodes]
+#     delete_nodes = []
+#     add_nodes = []
+#     if skeleton.node_names != new_skeleton.node_names:
+#         # Compare skeletons
+#         base_nodes = skeleton.node_names
+#         new_nodes = new_skeleton.node_names
+#         delete_nodes = [node for node in base_nodes if node not in new_nodes]
+#         add_nodes = [node for node in new_nodes if node not in base_nodes]
 
-    return delete_nodes, add_nodes
+#     return delete_nodes, add_nodes
 
 
 class DatabaseLoader():
