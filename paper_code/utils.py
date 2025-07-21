@@ -1947,6 +1947,94 @@ class GerbilPCA():
         #
         plt.show()
 
+
+    #
+    def plot_mean_behavior2(self):
+
+        # plot the time series first
+        plt.figure(figsize=(10,10))
+        ctr=0
+        for s in self.stack:
+
+            #
+            print ("s: ", s.shape)
+
+ # ok let's plot this in chunks of 4 
+            
+            linestyles = ['--', '-.', ':', '-']
+            for q in range(0,12,4):
+
+                #
+                mean = np.mean(s[q:q+4],axis=0)
+                #std = np.std(s[q:q+4],axis=0)
+
+                #
+                #print ("mean: ", np.mean(s), " std: ", np.std(s))
+
+                # get standard error
+                #sem = std/np.sqrt(s[q:q+4].shape[0])
+
+                #
+                t = np.arange(mean.shape[0])
+
+                plt.plot(t,mean, 
+                        label="cohort "+str(q//4+1)+ " " + self.behaviors[ctr],
+                        c=self.clrs[ctr],
+                        linewidth=5,
+                        linestyle = linestyles[q//4],
+                        alpha=.9,
+                        )
+
+       
+            # #
+            # #plt.plot(mean, c='black',label='beahvior')
+            # plt.fill_between(np.arange(len(mean)), mean-sem, mean+sem, 
+            #                  alpha=.2,
+            #                  color=self.clrs[ctr])
+            # #
+            # plt.title(self.behaviors[self.behavior_id])
+            # temp_changes = self.dev_changes[ctr]
+            # idx1 = np.where(temp_changes>0)[0]
+
+            # # plot a thick line over idx
+            # plt.scatter(t[idx1], mean[idx1], 
+            #             #linewidth=5, 
+            #             c=self.clrs[ctr],
+            #             marker='^',
+            #             s=self.size,
+            #             edgecolors='black',
+            #             #label='developmental stages'
+            #             )
+
+            #
+            ctr+=1
+
+        #
+        labels = np.arange(16,30,1)
+        plt.xticks(np.arange(14),labels)
+
+        plt.xlabel("dev PDay")
+        plt.ylabel("Time / distance")
+
+        #
+        plt.legend()
+                
+        #
+        plt.suptitle("")
+
+        #
+        plt.show()
+
+
+    
+
+        #
+        plt.legend(fontsize=20)
+
+        #
+        plt.show()
+
+
     #
     def plot_pca_3d(self):
 
@@ -1958,6 +2046,9 @@ class GerbilPCA():
 
         # First Principal Component
         polygon_array = []
+
+        # ok let's group the 12 points into 3 groups of 4 each and mark them with different marker shapes
+        markers = ['o','^','s']
 
         #
         for ctr,s in enumerate(self.stack):
@@ -1992,17 +2083,21 @@ class GerbilPCA():
             # print ("temp polygon: ", temp)
 
             #
-            ax.scatter( temp[:, 0],
-                        temp[:,1],
-                        temp[:,2],
-                        s=self.scatter_size,
-                        color=self.clrs[ctr],
-                        #marker = markers[ctr],
-                        label = self.behaviors[ctr] ,
-                        alpha = 0.8,
-                        # use black edges
-                            edgecolors='k'
-                        )
+            # plot the 3 groups separaltely
+            for q in range(0,12,4):
+                ax.scatter( temp[q:q+4, 0],
+                            temp[q:q+4,1],
+                            temp[q:q+4,2],
+                            s=self.scatter_size,
+                            marker = markers[q//4],
+                            color=self.clrs[ctr],
+                            #color=self.colors2[q//4],
+                            #marker = markers[ctr],
+                            label = "cohort " + str(q//4) + " " + self.behaviors[ctr] ,
+                            alpha = 0.8,
+                            # use black edges
+                                edgecolors='k'
+                            )
             
             # draw 3d convex hull
 
@@ -2027,8 +2122,9 @@ class GerbilPCA():
                         temp[:,2][simplex], 
 
                             color=self.clrs[ctr],
+                            #color=self.colors2[ctr],
                             linewidth=5,
-                            alpha=.5)
+                            alpha=.15)
                     
                 # Step 2: Compute the convex hull
                 hull = ConvexHull(temp)
@@ -2058,14 +2154,15 @@ class GerbilPCA():
                 ax.add_collection3d(Poly3DCollection(poly3d, 
                                                     facecolors=self.clrs[ctr], 
                                                     linewidths=1, 
-                                                    edgecolors=self.clrs[ctr], 
-                                                    alpha=0.5))
+                                                    edgecolors=self.colors2[ctr], 
+                                                    alpha=0.15))
 
         self.polygon_array = polygon_array
 
     #
     def plot_pca_2d(self):
-
+        
+        
         fig = plt.figure(figsize=(10,10))
         ax = fig.add_subplot(111)
 
@@ -2118,30 +2215,30 @@ class GerbilPCA():
             ctr2=0
             for m in range(0,temp.shape[0],chunk):
                 #
-                # show labels
-                if ctr2==0:
-                    ax.scatter( temp[m:m+chunk, 0],
+                # show labels for the first time only
+                #if ctr2==0:
+                ax.scatter( temp[m:m+chunk, 0],
                                 temp[m:m+chunk,1],
 
                                 s=self.scatter_size,
                                 color=self.clrs[ctr],
-                               # marker = markers[ctr2],
-                                label = self.behaviors[ctr] ,
+                                marker = markers[ctr2],
+                                label = "cohort: "+ str(m//4) + " " + self.behaviors[ctr] ,
                                 alpha = 0.8,
                         # use black edges
                             edgecolors='k'
                         )
-                else:
-                    ax.scatter( temp[m:m+chunk, 0],
-                            temp[m:m+chunk,1],
+                # else:
+                #     ax.scatter( temp[m:m+chunk, 0],
+                #             temp[m:m+chunk,1],
 
-                            s=self.scatter_size,
-                        color=self.clrs[ctr],
-                       # marker = markers[ctr2],
-                        alpha = 0.8,
-                        # use black edges
-                            edgecolors='k'
-                        )
+                #             s=self.scatter_size,
+                #         color=self.clrs[ctr],
+                #         marker = markers[ctr2],
+                #         alpha = 0.8,
+                #         # use black edges
+                #             edgecolors='k'
+                #         )
                 
                 #
                 ctr2+=1
@@ -2179,6 +2276,7 @@ class GerbilPCA():
     #
     def run_pca(self):
 
+        self.colors2 = ['#7f39cd',  '#9d88bf', '#3d1872','#e5d7f5']
 
         #
         clrs = []
